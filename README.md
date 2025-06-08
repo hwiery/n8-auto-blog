@@ -32,6 +32,20 @@ BLOG_ADDRESS=https://your-blog.tistory.com
 RSS_FEED_URL=https://news.google.com/rss?topic=h&hl=ko&gl=KR&ceid=KR:ko
 ```
 
+### 1-1. n8n 실행 및 확인
+```bash
+# n8n 실행 (24시간 자동화를 위해서는 항상 실행 상태 유지 필요)
+npx n8n start
+
+# 브라우저에서 n8n 대시보드 접속
+# http://localhost:5678
+
+# 환경변수 검증 (선택사항)
+node test-scheduled-content.js
+```
+
+**⚠️ 중요: n8n은 컴퓨터가 켜져있고 프로세스가 실행 중일 때만 작동합니다!**
+
 ### 2. Google Sheets 설정
 1. 새 Google Sheets 문서 생성
 2. 시트 이름을 `processed_links`로 변경
@@ -46,7 +60,7 @@ RSS_FEED_URL=https://news.google.com/rss?topic=h&hl=ko&gl=KR&ceid=KR:ko
 2. `n8n-workflow.json` 파일 업로드
 3. 노드별 설정 업데이트:
    - Google Sheets 문서 ID
-   - OpenAI API 키
+   
    - 환경변수 확인
 
 ### 4. 워크플로우 테스트
@@ -112,8 +126,7 @@ BLOG_ADDRESS=https://your-blog.tistory.com
 # RSS 피드 URL (선택사항, 기본값: Google News)
 RSS_FEED_URL=https://your-rss-feed-url.com/feed
 
-# OpenAI API (n8n 워크플로우용)
-OPENAI_API_KEY=your_openai_api_key
+
 
 # Google Sheets (n8n 워크플로우용)
 GOOGLE_SHEETS_DOCUMENT_ID=your_sheet_id
@@ -157,6 +170,31 @@ node -e "require('./test-n8n-workflow').testLLMResponseParsing()"
 2. **모달 처리 실패**: headless: false로 설정하여 브라우저 동작 확인
 3. **환경변수 오류**: .env 파일 또는 시스템 환경변수 설정 확인
 4. **Navigation timeout**: 네트워크 연결 및 페이지 로딩 시간 확인
+5. **스케줄링 실행 안됨**: n8n 프로세스 실행 상태 및 워크플로우 활성화 확인
+
+### n8n 관련 문제 해결
+1. **n8n이 실행되지 않음**:
+   ```bash
+   # n8n 프로세스 확인
+   Get-Process | Where-Object {$_.ProcessName -like "*n8n*"}
+   
+   # n8n 재시작
+   npx n8n start
+   ```
+
+2. **워크플로우가 실행되지 않음**:
+   - http://localhost:5678 접속하여 워크플로우 상태 확인
+   - 워크플로우 활성화 버튼 클릭
+   - Executions 탭에서 실행 이력 확인
+
+3. **스케줄된 시간에 포스팅이 안됨**:
+   ```bash
+   # 환경변수 확인
+   node test-scheduled-content.js
+   
+   # 수동 실행 테스트
+   # n8n 대시보드에서 "Execute Workflow" 클릭
+   ```
 
 ### 디버깅 팁
 ```bash
@@ -170,6 +208,37 @@ node tistory-poster-fixed.js "제목" "내용" 2>&1 | tee debug.log
 node -e "console.log('환경변수 확인:', {TISTORY_ID: !!process.env.TISTORY_ID, TISTORY_PW: !!process.env.TISTORY_PW, BLOG_ADDRESS: !!process.env.BLOG_ADDRESS})"
 ```
 
+## 📊 모니터링 및 운영
+
+### n8n 대시보드 모니터링
+```
+URL: http://localhost:5678
+주요 확인 사항:
+- Workflows: 워크플로우 활성화 상태
+- Executions: 실행 이력 및 성공/실패 상태
+- Settings: 환경변수 및 설정 확인
+```
+
+### 실행 환경별 특징
+| 환경 | 장점 | 단점 | 권장 용도 |
+|------|------|------|-----------|
+| **로컬 실행** | 무료, 즉시 테스트 가능 | 컴퓨터 종료 시 중단 | 개발/테스트 |
+| **n8n Cloud** | 24시간 자동 실행, 관리 편의 | 유료 ($20/월~) | 운영 환경 |
+| **자체 서버** | 완전한 제어, 비용 효율적 | 서버 관리 필요 | 고급 사용자 |
+
+### 24시간 자동화 방법
+1. **n8n Cloud 사용 (권장)**:
+   - https://n8n.cloud 가입
+   - 워크플로우 업로드
+   - 환경변수 설정
+
+2. **로컬 24시간 실행**:
+   ```bash
+   # Windows 작업 스케줄러 등록
+   # 또는 백그라운드 실행
+   Start-Process -FilePath "npx" -ArgumentList "n8n", "start" -WindowStyle Hidden
+   ```
+
 ## 📈 성능 최적화
 
 ### n8n 워크플로우 최적화
@@ -180,8 +249,32 @@ node -e "console.log('환경변수 확인:', {TISTORY_ID: !!process.env.TISTORY_
 
 ### 리소스 관리
 - **메모리**: Puppeteer 브라우저 인스턴스 적절한 종료
-- **API 호출**: OpenAI API 사용량 모니터링
+- **네트워크**: 안정적인 인터넷 연결 유지
 - **스토리지**: Google Sheets 행 수 관리
+
+## 📅 스케줄링 기능 (NEW!)
+
+### 환경변수 기반 스케줄링
+```bash
+# 스케줄된 콘텐츠 설정
+CONTENTS_NUMBER=1
+1_TIME=2025-06-08, 21:22 KST
+1_URL=https://notebooklm.google.com/notebook/cd72861d-291e-4341-9478-3f0b2a948a85
+1_PROCESSED=false
+```
+
+### 사용 방법
+1. **워크플로우 가져오기**: `scheduled-content-workflow.json`
+2. **환경변수 설정**: 위 형식으로 콘텐츠 스케줄 등록
+3. **자동 실행**: 매시간 스케줄 확인 후 자동 포스팅
+4. **모니터링**: n8n 대시보드에서 실행 상태 확인
+
+### 지원하는 콘텐츠 소스
+- NotebookLM 공유 링크
+- 일반 웹사이트 및 블로그
+- 뉴스 기사 및 기술 문서
+
+자세한 내용은 `scheduled-content-setup.md` 참조
 
 ## 🔄 확장 가능성
 
@@ -215,4 +308,4 @@ node -e "console.log('환경변수 확인:', {TISTORY_ID: !!process.env.TISTORY_
 - 이 도구는 교육 및 개인 사용 목적으로 제작되었습니다
 - 티스토리 이용약관을 준수하여 사용하세요
 - RSS 피드 제공자의 이용약관을 확인하세요
-- OpenAI API 사용량에 따른 비용이 발생할 수 있습니다
+- 대용량 콘텐츠 처리 시 시간이 오래 걸릴 수 있습니다

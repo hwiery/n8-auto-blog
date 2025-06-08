@@ -331,42 +331,121 @@ async function loginToTistory(page) {
  * 글쓰기 페이지로 이동
  */
 async function navigateToWritePage(page) {
-    const writePageUrl = `${BLOG_ADDRESS}/manage/newpost/`;
+    console.log('📝 블로그 메인 페이지로 이동합니다...');
     
+    // 1단계: 블로그 메인 페이지로 이동
     try {
-        await page.goto(writePageUrl, { 
-            waitUntil: 'networkidle2',
+        await page.goto(BLOG_ADDRESS, { 
+            waitUntil: 'domcontentloaded',
             timeout: 30000 
         });
+        console.log('✅ 블로그 메인 페이지 접속 완료');
     } catch (error) {
-        console.log('⚠️ 첫 번째 시도 실패, 다시 시도합니다...');
-        // 두 번째 시도
+        console.log('⚠️ 메인 페이지 접속 실패:', error.message);
+        throw new Error('블로그 메인 페이지에 접속할 수 없습니다.');
+    }
+
+    // 페이지 로딩 대기
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 2단계: 글쓰기 버튼 찾기 및 클릭
+    console.log('🔍 글쓰기 버튼을 찾는 중...');
+    
+    // XPath를 사용하여 "글쓰기" 텍스트가 포함된 링크 찾기
+    const writeButtonTexts = ['글쓰기', '새 글', '포스트 작성', 'Write'];
+    let writeButtonFound = false;
+    
+    for (const text of writeButtonTexts) {
+        try {
+            console.log(`🔍 "${text}" 버튼 검색 중...`);
+            const elements = await page.$x(`//a[contains(text(), "${text}")]`);
+            if (elements.length > 0) {
+                console.log(`✅ "${text}" 버튼 발견! 클릭합니다.`);
+                await elements[0].click();
+                writeButtonFound = true;
+                break;
+            }
+        } catch (error) {
+            console.log(`⚠️ "${text}" 버튼 검색 중 오류:`, error.message);
+        }
+    }
+    
+    // 추가 선택자로 시도
+    if (!writeButtonFound) {
+        const additionalSelectors = [
+            'a[href*="newpost"]',
+            'a[href*="/manage/newpost/"]',
+            'a[href*="write"]',
+            '.btn-write',
+            '.write-btn',
+            '#write-btn',
+            'a[title*="글쓰기"]',
+            'a[title*="새 글"]'
+        ];
+        
+        for (const selector of additionalSelectors) {
+            try {
+                const element = await page.$(selector);
+                if (element) {
+                    console.log(`✅ 글쓰기 버튼 발견: ${selector}`);
+                    await element.click();
+                    writeButtonFound = true;
+                    break;
+                }
+            } catch (error) {
+                // 계속 시도
+            }
+        }
+    }
+
+    if (writeButtonFound) {
+        console.log('🔗 글쓰기 버튼 클릭 완료, 페이지 로딩 대기...');
+        // 글쓰기 페이지 로딩 대기
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // 페이지 이동 확인
+        try {
+            await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 });
+        } catch (error) {
+            console.log('⚠️ 페이지 이동 감지 실패, 현재 페이지에서 계속 진행...');
+        }
+    } else {
+        console.log('⚠️ 글쓰기 버튼을 찾을 수 없습니다. 직접 URL로 이동합니다...');
+        // 직접 글쓰기 페이지로 이동
+        const writePageUrl = `${BLOG_ADDRESS}/manage/newpost/`;
         await page.goto(writePageUrl, { 
             waitUntil: 'domcontentloaded',
             timeout: 30000 
         });
     }
 
-    // 페이지 로딩 대기
+    // 추가 로딩 대기
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     // 모달 창 처리 (이전 글 복원 등)
     await handleModals(page);
 
-    // 제목 입력란 선택자들
+    // 제목 입력란 확인 (더 많은 선택자 추가)
     const titleSelectors = [
         '#post-title-inp',
         'input[name="title"]',
         'input[placeholder*="제목"]',
+        'input[placeholder*="Title"]',
         '.title-input',
         '#title',
-        'input[id*="title"]'
+        'input[id*="title"]',
+        'input[class*="title"]',
+        '.post-title',
+        '#postTitle',
+        'input[data-role="title"]',
+        '.editor-title input',
+        '.write-title input'
     ];
 
     let titleInput = null;
     for (const selector of titleSelectors) {
         try {
-            await page.waitForSelector(selector, { timeout: 5000 });
+            await page.waitForSelector(selector, { timeout: 2000 });
             titleInput = await page.$(selector);
             if (titleInput) {
                 console.log(`✅ 제목 입력란 발견: ${selector}`);
@@ -378,6 +457,24 @@ async function navigateToWritePage(page) {
     }
 
     if (!titleInput) {
+        // 페이지의 모든 input 요소 분석
+        console.log('🔍 페이지의 모든 input 요소를 분석합니다...');
+        const allInputs = await page.evaluate(() => {
+            const inputs = document.querySelectorAll('input');
+            return Array.from(inputs).map(input => ({
+                type: input.type,
+                name: input.name,
+                id: input.id,
+                className: input.className,
+                placeholder: input.placeholder
+            }));
+        });
+        
+        console.log('발견된 input 요소들:');
+        allInputs.forEach((input, index) => {
+            console.log(`  ${index + 1}. type:${input.type}, name:${input.name}, id:${input.id}, class:${input.className}, placeholder:${input.placeholder}`);
+        });
+        
         throw new Error('제목 입력란을 찾을 수 없습니다. 글쓰기 페이지가 올바르게 로드되지 않았을 수 있습니다.');
     }
 

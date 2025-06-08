@@ -61,4 +61,12 @@ test-*.js (except test-n8n-workflow.js)
 # Google Sheets 인증 파일
 credentials.json
 token.json
-service-account.json 
+service-account.json
+
+# 브라우저 사용자 데이터 (Puppeteer)
+chrome-user-data/
+firefox-user-data/
+browser-data/
+
+# Puppeteer 관련
+.puppeteer/ 
