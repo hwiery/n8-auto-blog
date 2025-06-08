@@ -1,0 +1,190 @@
+{
+  "name": "티스토리 자동 포스팅 워크플로우",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "매일 오전 9시 실행",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "title",
+              "name": "title",
+              "value": "=오늘의 자동 포스팅 - {{ $now.format('yyyy-MM-dd') }}",
+              "type": "string"
+            },
+            {
+              "id": "contentHTML",
+              "name": "contentHTML", 
+              "value": "=<h1>{{ $now.format('yyyy년 MM월 dd일') }} 자동 포스팅</h1>\n<p>이 포스트는 <strong>n8n</strong>과 <strong>Puppeteer</strong>를 이용해 자동으로 작성되었습니다.</p>\n<h2>오늘의 할 일</h2>\n<ul>\n<li>n8n 워크플로우 점검</li>\n<li>자동화 시스템 모니터링</li>\n<li>새로운 기능 개발</li>\n</ul>\n<p>자동화의 힘으로 더 효율적인 블로깅을 경험해보세요! 🚀</p>",
+              "type": "string"
+            },
+            {
+              "id": "category",
+              "name": "category",
+              "value": "개발",
+              "type": "string"
+            },
+            {
+              "id": "tags",
+              "name": "tags",
+              "value": "n8n,자동화,티스토리,Puppeteer",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "content-setup",
+      "name": "콘텐츠 설정",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "command": "=node /path/to/tistory-poster.js \"{{ $json.title }}\" \"{{ $json.contentHTML }}\" \"{{ $json.category }}\" \"{{ $json.tags }}\"",
+        "options": {}
+      },
+      "id": "execute-script",
+      "name": "Puppeteer 스크립트 실행",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-check",
+              "leftValue": "={{ $json.exitCode }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "success-check",
+      "name": "성공 여부 확인",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "channel": "#general",
+        "text": "=✅ 티스토리 포스팅 성공!\n제목: {{ $node['콘텐츠 설정'].json.title }}\n시간: {{ $now.format('yyyy-MM-dd HH:mm:ss') }}",
+        "otherOptions": {}
+      },
+      "id": "success-notification",
+      "name": "성공 알림 (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "channel": "#general",
+        "text": "=❌ 티스토리 포스팅 실패!\n제목: {{ $node['콘텐츠 설정'].json.title }}\n오류: {{ $node['Puppeteer 스크립트 실행'].json.stderr }}\n시간: {{ $now.format('yyyy-MM-dd HH:mm:ss') }}",
+        "otherOptions": {}
+      },
+      "id": "error-notification",
+      "name": "실패 알림 (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "매일 오전 9시 실행": {
+      "main": [
+        [
+          {
+            "node": "콘텐츠 설정",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "콘텐츠 설정": {
+      "main": [
+        [
+          {
+            "node": "Puppeteer 스크립트 실행",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Puppeteer 스크립트 실행": {
+      "main": [
+        [
+          {
+            "node": "성공 여부 확인",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "성공 여부 확인": {
+      "main": [
+        [
+          {
+            "node": "성공 알림 (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 알림 (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+} 

@@ -1,0 +1,324 @@
+{
+  "name": "RSS to Tistory Auto Posting",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "={{ $env.RSS_FEED_URL || 'https://news.google.com/rss?topic=h&hl=ko&gl=KR&ceid=KR:ko' }}",
+        "options": {}
+      },
+      "id": "rss-feed-reader",
+      "name": "RSS Feed Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "resource": "sheet",
+        "operation": "lookup",
+        "documentId": "YOUR_GOOGLE_SHEET_ID",
+        "sheetName": "processed_links",
+        "lookupColumn": "A",
+        "lookupValue": "={{ $json.link }}"
+      },
+      "id": "check-processed-links",
+      "name": "Check Processed Links",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-new-article",
+              "leftValue": "={{ $node['Check Processed Links'].json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-new-article",
+      "name": "IF - New Article?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "html"
+            }
+          }
+        },
+        "requestMethod": "GET"
+      },
+      "id": "extract-full-content",
+      "name": "Extract Full Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// HTML에서 본문 추출\nconst cheerio = require('cheerio');\nconst html = $input.first().json.data;\nconst $ = cheerio.load(html);\n\n// Nielsen Norman Group 사이트의 본문 선택자\nlet content = '';\n\n// 여러 가능한 선택자 시도\nconst selectors = [\n  'article .article-content',\n  '.article-body',\n  '.post-content',\n  'main article',\n  '.content'\n];\n\nfor (const selector of selectors) {\n  const element = $(selector);\n  if (element.length > 0) {\n    content = element.text().trim();\n    break;\n  }\n}\n\n// 기본 fallback\nif (!content) {\n  content = $('body').text().trim();\n}\n\n// 불필요한 공백 제거\ncontent = content.replace(/\\s+/g, ' ').trim();\n\nreturn {\n  originalLink: $input.first().json.link,\n  title: $input.first().json.title,\n  pubDate: $input.first().json.pubDate,\n  extractedContent: content\n};"
+      },
+      "id": "parse-html-content",
+      "name": "Parse HTML Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "create",
+        "chatId": "gpt-4",
+        "text": "너는 실리콘밸리의 UX 리서처야. 아래 <원문>은 Nielsen Norman Group의 최신 아티클이야. 이 글을 한국어로 번역하고, 아래 JSON 형식에 맞춰 핵심 내용을 분석해줘.\n\n# 분석 포맷\n{\n  \"originalTitle\": \"원문 제목\",\n  \"koreanTitle\": \"한국어 번역 제목\",\n  \"summary\": \"글 전체의 핵심 내용을 3줄로 요약\",\n  \"keyPoints\": [\n    \"첫 번째 핵심 주장 또는 발견\",\n    \"두 번째 핵심 주장 또는 발견\",\n    \"세 번째 핵심 주장 또는 발견\"\n  ],\n  \"targetApplication\": \"이 지식이 주로 적용될 수 있는 분야 (예: 이커머스 앱의 결제 프로세스 개선)\"\n}\n\n<원문>\n제목: {{ $json.title }}\n내용: {{ $json.extractedContent }}",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        }
+      },
+      "id": "llm-analysis",
+      "name": "LLM 1차 분석",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "create",
+        "chatId": "gpt-4",
+        "text": "너는 국내 최고의 IT 서비스 기획 전문가이자 인기 블로거야. 아래 <UX 분석 자료>를 바탕으로, 국내 IT 기획자와 디자이너를 위한 블로그 포스트를 작성해줘.\n\n# 포스트 작성 가이드\n1. **제목:** <UX 분석 자료>의 `koreanTitle`을 참고하되, \"카카오, 토스에 적용해본다면?\" 과 같이 국내 독자의 호기심을 자극하는 문구를 추가하여 새롭게 만들어줘.\n2. **도입부:** 이 해외 아티클이 왜 지금 우리에게 중요한지 문제의식을 제시해줘.\n3. **본문:**\n   - 각 `keyPoints`를 소제목(h2)으로 삼아 상세히 설명해줘.\n   - **(가장 중요)** 각 포인트 설명 말미에, [인사이트+] 라는 말머리를 달고 해당 개념을 '국내 서비스(예: 네이버, 쿠팡, 배달의민족)에 적용한다면 어떤 효과가 있을지' 너의 독창적인 의견과 예시를 구체적으로 추가해줢.\n4. **결론:** 내용을 요약하고, 독자들이 자신의 서비스에 어떻게 적용해볼 수 있을지 질문을 던지며 마무리해줘.\n5. **형식:** 전체 내용은 SEO에 최적화된 유효한 HTML로만 작성해줘.\n\n응답은 다음 JSON 형식으로만 해줘:\n{\n  \"title\": \"최종 블로그 포스트 제목\",\n  \"contentHTML\": \"HTML 형식의 전체 본문 내용\"\n}\n\n<UX 분석 자료>\n{{ $json.choices[0].message.content }}",
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 4000
+        }
+      },
+      "id": "llm-recreation",
+      "name": "LLM 2차 재창조",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM 응답에서 제목과 본문 추출\nconst llmResponse = $input.first().json.choices[0].message.content;\n\ntry {\n  // JSON 파싱 시도\n  const parsedContent = JSON.parse(llmResponse);\n  \n  return {\n    postTitle: parsedContent.title,\n    postContent: parsedContent.contentHTML,\n    originalLink: $node['Parse HTML Content'].json.originalLink,\n    originalTitle: $node['Parse HTML Content'].json.title,\n    pubDate: $node['Parse HTML Content'].json.pubDate\n  };\n} catch (error) {\n  // JSON 파싱 실패 시 텍스트에서 추출\n  const lines = llmResponse.split('\\n');\n  let title = '새로운 UX 인사이트';\n  let content = llmResponse;\n  \n  // 제목 추출 시도\n  for (const line of lines) {\n    if (line.includes('제목') || line.includes('title')) {\n      title = line.replace(/.*[:：]\\s*/, '').trim();\n      break;\n    }\n  }\n  \n  return {\n    postTitle: title,\n    postContent: content,\n    originalLink: $node['Parse HTML Content'].json.originalLink,\n    originalTitle: $node['Parse HTML Content'].json.title,\n    pubDate: $node['Parse HTML Content'].json.pubDate\n  };\n}"
+      },
+      "id": "extract-post-data",
+      "name": "Extract Post Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "command": "cd /data/tistory-automation && node tistory-poster-n8n.js \"{{ $json.postTitle }}\" \"{{ $json.postContent }}\"",
+        "options": {}
+      },
+      "id": "post-to-tistory",
+      "name": "Post to Tistory",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": "YOUR_GOOGLE_SHEET_ID",
+        "sheetName": "processed_links",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "A": "={{ $node['Extract Post Data'].json.originalLink }}",
+            "B": "={{ $node['Extract Post Data'].json.postTitle }}",
+            "C": "={{ $node['Extract Post Data'].json.pubDate }}",
+            "D": "={{ new Date().toISOString() }}"
+          }
+        }
+      },
+      "id": "save-processed-link",
+      "name": "Save Processed Link",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "content": "✅ 새로운 포스트가 성공적으로 발행되었습니다!\n\n📰 원문: {{ $node['Extract Post Data'].json.originalTitle }}\n🔗 링크: {{ $node['Extract Post Data'].json.originalLink }}\n\n📝 발행된 제목: {{ $node['Extract Post Data'].json.postTitle }}\n⏰ 처리 시간: {{ new Date().toLocaleString('ko-KR') }}",
+        "options": {}
+      },
+      "id": "success-notification",
+      "name": "Success Notification",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "content": "ℹ️ 이미 처리된 글입니다.\n\n📰 제목: {{ $json.title }}\n🔗 링크: {{ $json.link }}\n⏰ 확인 시간: {{ new Date().toLocaleString('ko-KR') }}",
+        "options": {}
+      },
+      "id": "already-processed",
+      "name": "Already Processed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 400]
+    }
+  ],
+  "connections": {
+    "RSS Feed Read": {
+      "main": [
+        [
+          {
+            "node": "Check Processed Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Processed Links": {
+      "main": [
+        [
+          {
+            "node": "IF - New Article?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - New Article?": {
+      "main": [
+        [
+          {
+            "node": "Extract Full Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Full Content": {
+      "main": [
+        [
+          {
+            "node": "Parse HTML Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse HTML Content": {
+      "main": [
+        [
+          {
+            "node": "LLM 1차 분석",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM 1차 분석": {
+      "main": [
+        [
+          {
+            "node": "LLM 2차 재창조",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM 2차 재창조": {
+      "main": [
+        [
+          {
+            "node": "Extract Post Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Post Data": {
+      "main": [
+        [
+          {
+            "node": "Post to Tistory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Tistory": {
+      "main": [
+        [
+          {
+            "node": "Save Processed Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Processed Link": {
+      "main": [
+        [
+          {
+            "node": "Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-07T15:00:00.000Z",
+      "updatedAt": "2025-01-07T15:00:00.000Z",
+      "id": "auto-posting",
+      "name": "Auto Posting"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-07T15:00:00.000Z",
+  "versionId": "1"
+} 
