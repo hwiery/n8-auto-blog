@@ -52,6 +52,8 @@ settings.json
 # 백업 파일
 *.bak
 *.backup
+*.dmg
+*.zip
 
 # 디버그 파일
 debug-*.js
