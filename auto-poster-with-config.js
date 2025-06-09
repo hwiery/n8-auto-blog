@@ -242,12 +242,19 @@ async function processArticleWithEnhancedContent(article) {
     console.log('🎨 향상된 HTML 템플릿을 생성합니다...');
     const enhancedHTML = createEnhancedHTMLTemplate(article, fullContent);
     
-    // 3. AI로 콘텐츠를 한국어 자연어 스타일로 개선
+    // 3. AI로 콘텐츠를 한국어 자연어 스타일로 개선 (설정이 활성화된 경우에만)
     let finalContent = enhancedHTML;
-    if (openai && fullContent) {
+    if (config.openai.enabled && openai && fullContent) {
       console.log('🤖 AI로 콘텐츠를 한국어 자연어 스타일로 개선합니다...');
-      const aiImproved = await improveContentWithAI(article, fullContent);
-      finalContent = createEnhancedHTMLTemplate(article, aiImproved.content);
+      try {
+        const aiImproved = await improveContentWithAI(article, fullContent);
+        finalContent = createEnhancedHTMLTemplate(article, aiImproved.content);
+        console.log('✅ AI 콘텐츠 개선 완료');
+      } catch (error) {
+        console.log('⚠️ AI 콘텐츠 개선 실패, 기본 템플릿 사용:', error.message);
+      }
+    } else {
+      console.log('ℹ️ AI 콘텐츠 개선 비활성화 (config.openai.enabled: ' + config.openai.enabled + ')');
     }
     
     console.log('✅ 콘텐츠 준비 완료');
@@ -343,16 +350,26 @@ async function postToTistory(title, content, tags) {
  * 메인 자동화 함수
  */
 async function runAutomation() {
-  // allowRepost 설정 확인 (환경변수 또는 GUI 설정)
+  // GUI 설정 로드 및 적용
   const allowRepostEnv = process.env.ALLOW_REPOST === 'true';
   let allowRepost = allowRepostEnv;
+  let maxArticles = config.schedule.maxArticlesPerRun; // 기본값
+  
   try {
     const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
     if (fs.existsSync(guiConfigPath)) {
       const guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+      
+      // allowRepost 설정 적용
       if (typeof guiConfig.schedule?.allowRepost === 'boolean') {
         allowRepost = guiConfig.schedule.allowRepost;
         console.log(`🔧 GUI 설정 allowRepost 사용: ${allowRepost}`);
+      }
+      
+      // maxArticles 설정 적용
+      if (typeof guiConfig.schedule?.maxArticles === 'number' && guiConfig.schedule.maxArticles > 0) {
+        maxArticles = guiConfig.schedule.maxArticles;
+        console.log(`🔧 GUI 설정 maxArticles 사용: ${maxArticles}`);
       }
     }
   } catch (error) {
@@ -365,7 +382,7 @@ async function runAutomation() {
   console.log(`   - 스케줄: ${config.schedule.enabled ? config.schedule.type : '비활성화'}`);
   console.log(`   - HTML 모드: ${config.htmlMode.enabled ? config.htmlMode.template : '비활성화'}`);
   console.log(`   - OpenAI: ${config.openai.enabled ? '활성화' : '비활성화'}`);
-  console.log(`   - 최대 기사 수: ${config.schedule.maxArticlesPerRun}개`);
+  console.log(`   - 최대 기사 수: ${maxArticles}개`);
   
   // 환경변수 및 RSS URL 상태 확인
   console.log(`📡 RSS 설정 확인:`);
@@ -403,13 +420,13 @@ async function runAutomation() {
     let targetArticles;
     if (allowRepost) {
       // 이전 처리 기록 무시: 모든 기사 중 최대 개수만큼 포스팅
-      targetArticles = articles.slice(0, config.schedule.maxArticlesPerRun);
+      targetArticles = articles.slice(0, maxArticles);
       console.log(`⚙️ allowRepost 활성: 과거 기사 포함, 총 ${targetArticles.length}개 기사 포스팅`);
     } else {
       // 새 기사만 포스팅
       targetArticles = articles.filter(article =>
         !processedArticles.includes(article.id)
-      ).slice(0, config.schedule.maxArticlesPerRun);
+      ).slice(0, maxArticles);
       console.log(`🆕 새 기사 ${targetArticles.length}개 발견`);
     }
 

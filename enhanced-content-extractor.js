@@ -18,7 +18,7 @@ async function extractArticleContent(articleUrl) {
   let browser;
   try {
     browser = await puppeteer.launch({
-      headless: true,
+      headless: "new",
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -26,7 +26,9 @@ async function extractArticleContent(articleUrl) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--lang=ko-KR',
+        '--accept-lang=ko-KR'
       ]
     });
 

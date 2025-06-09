@@ -510,20 +510,38 @@ async function writePost(page) {
             await switchToHTMLMode(page);
             htmlModeSuccess = true;
             console.log('✅ HTML 모드 전환 성공');
+            
+            // HTML 모드에서 내용 입력
+            console.log('📄 HTML 모드로 본문 내용을 입력합니다...');
+            await inputContent(page, postContentHTML);
+            
+            // 내용 입력 확인
+            const contentVerified = await verifyContentInput(page);
+            if (!contentVerified) {
+                console.log('⚠️ HTML 모드에서 내용 입력 실패, 텍스트 모드로 재시도');
+                htmlModeSuccess = false;
+            }
         } catch (error) {
             console.log('⚠️ HTML 모드 전환 실패, 일반 텍스트 모드로 진행:', error.message);
             htmlModeSuccess = false;
         }
 
-        // 내용 입력
-        console.log('📄 본문 내용을 입력합니다...');
-        if (htmlModeSuccess) {
-            await inputContent(page, postContentHTML);
-        } else {
+        // HTML 모드 실패 시 텍스트 모드로 폴백
+        if (!htmlModeSuccess) {
+            console.log('📄 일반 텍스트 모드로 본문 내용을 입력합니다...');
             // HTML 태그 제거하여 일반 텍스트로 입력
             const plainText = postContentHTML.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-            console.log('📄 HTML 태그 제거하여 일반 텍스트로 입력합니다...');
-            await inputContent(page, plainText);
+            
+            // 최소 내용 길이 보장
+            const minContent = plainText.length > 100 ? plainText : plainText + '\n\n본 글은 자동으로 생성된 뉴스 요약입니다.\n\n' + '더 자세한 내용은 원문을 확인해주세요.'.repeat(3);
+            
+            await inputContent(page, minContent);
+            
+            // 내용 입력 재확인
+            const contentVerified = await verifyContentInput(page);
+            if (!contentVerified) {
+                throw new Error('내용 입력에 완전히 실패했습니다.');
+            }
         }
 
         // 카테고리 설정 (선택적)
@@ -763,6 +781,57 @@ async function inputContent(page, content) {
 
     console.log('❌ 모든 방법으로 본문 입력에 실패했습니다.');
     throw new Error('본문 내용을 입력할 수 없습니다. 에디터를 찾을 수 없습니다.');
+}
+
+/**
+ * 내용 입력 확인 함수
+ */
+async function verifyContentInput(page) {
+    console.log('🔍 내용 입력 확인 중...');
+    
+    try {
+        // 다양한 방법으로 내용 확인
+        const contentCheck = await page.evaluate(() => {
+            // 1. CodeMirror 에디터 확인
+            const cmEditor = document.querySelector('.CodeMirror');
+            if (cmEditor && cmEditor.CodeMirror) {
+                const content = cmEditor.CodeMirror.getValue();
+                if (content && content.length > 50) {
+                    return { found: true, length: content.length, method: 'CodeMirror' };
+                }
+            }
+            
+            // 2. textarea 확인
+            const textareas = document.querySelectorAll('textarea');
+            for (let textarea of textareas) {
+                if (textarea.value && textarea.value.length > 50) {
+                    return { found: true, length: textarea.value.length, method: 'textarea' };
+                }
+            }
+            
+            // 3. contenteditable 확인
+            const editables = document.querySelectorAll('[contenteditable="true"]');
+            for (let editable of editables) {
+                const content = editable.innerHTML || editable.textContent;
+                if (content && content.length > 50) {
+                    return { found: true, length: content.length, method: 'contenteditable' };
+                }
+            }
+            
+            return { found: false, length: 0, method: 'none' };
+        });
+        
+        if (contentCheck.found) {
+            console.log(`✅ 내용 입력 확인됨: ${contentCheck.method} 방식, ${contentCheck.length}자`);
+            return true;
+        } else {
+            console.log('❌ 내용이 입력되지 않았습니다.');
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ 내용 확인 중 오류:', error.message);
+        return false;
+    }
 }
 
 /**

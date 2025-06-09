@@ -167,8 +167,9 @@ function setupEventListeners() {
     
     // 로그 관리 버튼
     document.getElementById('clear-log')?.addEventListener('click', clearLogs);
-    document.getElementById('export-log')?.addEventListener('click', exportLogs);
-    document.getElementById('open-log-file')?.addEventListener('click', openLogFile);
+            document.getElementById('export-log')?.addEventListener('click', exportLogs);
+        document.getElementById('open-log-file')?.addEventListener('click', openLogFile);
+        document.getElementById('copy-all-logs')?.addEventListener('click', copyAllLogs);
     
     // 동적 UI 변경 이벤트
     document.getElementById('execution-mode')?.addEventListener('change', updateScheduleOptionsVisibility);
@@ -869,6 +870,48 @@ async function openLogFile() {
     } catch (error) {
         console.error('로그 파일 열기 오류:', error);
         showMessage('로그 파일 열기 중 오류가 발생했습니다.', 'error');
+    }
+}
+
+/**
+ * 전체 로그 복사
+ */
+async function copyAllLogs() {
+    try {
+        const logViewer = document.getElementById('log-viewer');
+        if (!logViewer) {
+            showMessage('로그 뷰어를 찾을 수 없습니다.', 'error');
+            return;
+        }
+
+        // 모든 로그 엔트리 수집
+        const logEntries = logViewer.querySelectorAll('.log-entry');
+        const allLogs = Array.from(logEntries).map(entry => entry.textContent).join('\n');
+        
+        if (!allLogs.trim()) {
+            showMessage('복사할 로그가 없습니다.', 'warning');
+            return;
+        }
+
+        // 클립보드에 복사
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(allLogs);
+            showMessage(`총 ${logEntries.length}개의 로그가 클립보드에 복사되었습니다.`, 'success');
+        } else {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = allLogs;
+            document.body.appendChild(textArea);
+            textArea.select();
+            textArea.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showMessage(`총 ${logEntries.length}개의 로그가 클립보드에 복사되었습니다.`, 'success');
+        }
+        
+    } catch (error) {
+        console.error('로그 복사 오류:', error);
+        showMessage('로그 복사 중 오류가 발생했습니다.', 'error');
     }
 }
 
