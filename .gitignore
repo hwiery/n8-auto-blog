@@ -54,6 +54,7 @@ settings.json
 *.backup
 *.dmg
 *.zip
+*.exe
 
 # 디버그 파일
 debug-*.js
