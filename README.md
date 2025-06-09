@@ -1,311 +1,169 @@
-# 티스토리 자동화 프로젝트
+# 티스토리 자동화 GUI 시스템 v2.0
 
-RSS 피드를 모니터링하여 새 글을 감지하고, LLM으로 분석 및 재창조한 후 티스토리에 자동 포스팅하는 완전한 자동화 시스템입니다.
+GUI 기반의 티스토리 자동 포스팅 시스템입니다. Electron + Node.js + Puppeteer를 활용하여 RSS 피드에서 자동으로 기사를 수집하고 티스토리 블로그에 포스팅합니다.
 
-## 📋 프로젝트 구성
+## 🚀 주요 기능
 
-### 🤖 n8n 워크플로우 (권장)
-- **파일**: `n8n-workflow.json`
-- **설명**: RSS 피드 모니터링부터 티스토리 포스팅까지의 완전 자동화
-- **특징**: 
-  - LLM 기반 콘텐츠 분석 및 재창조
-  - 중복 포스팅 방지
-  - Google Sheets 연동
-  - 에러 핸들링 및 알림
+### ✨ 새로운 기능 (v2.0)
+- **allowRepost 옵션**: 기존 기사도 재포스팅 가능
+- **OpenAI API 연동**: 한국어 콘텐츠 자동 개선 및 재구성
+- **향상된 GUI**: 토스트 메시지 시스템으로 개선된 사용자 경험
+- **보안 강화**: 민감한 정보 자동 제거 및 보호
+- **안정성 개선**: HTML 모드 실패 시 텍스트 모드 폴백
 
-### 🔧 독립 실행 스크립트
-- **파일**: `tistory-poster-fixed.js` (최신 안정 버전)
-- **설명**: 단독으로 실행 가능한 티스토리 포스팅 스크립트
-- **사용법**: `node tistory-poster-fixed.js "제목" "내용"`
+### 📰 자동화 기능
+- RSS 피드 자동 파싱 (Google News, 커스텀 RSS 지원)
+- 실제 기사 내용 추출 및 HTML 템플릿 생성
+- 중복 기사 자동 필터링
+- 자동 스케줄링 (수동, 자동, 예약 실행)
+- 실시간 로그 모니터링
 
-## 🚀 빠른 시작 (n8n 워크플로우)
+### 🤖 AI 기능
+- 제목 개선 및 한국어 자연어 스타일 변환
+- 콘텐츠 요약 및 재구성
+- 자동 태그 생성
+- 번역 및 현지화
 
-### 1. 사전 준비
+## 🛠️ 설치 및 설정
+
+### 1. 의존성 설치
 ```bash
-# 의존성 설치
-npm install puppeteer dotenv
+npm install
+```
 
-# 환경변수 설정 (.env 파일 생성)
+### 2. 설정 파일 생성
+```bash
+# 예제 설정 파일 복사
+cp gui-config.example.json gui-config.json
+
+# 개인 정보 입력
+# gui-config.json 파일을 열어서 다음 정보를 입력하세요:
+# - 티스토리 계정 정보
+# - RSS 피드 URL
+# - OpenAI API 키 (선택사항)
+```
+
+### 3. 환경변수 설정 (선택사항)
+```bash
+# .env 파일 생성
 TISTORY_ID=your_email@gmail.com
-TISTORY_PW=your_password
+TISTORY_PW=your_password  
 BLOG_ADDRESS=https://your-blog.tistory.com
-RSS_FEED_URL=https://news.google.com/rss?topic=h&hl=ko&gl=KR&ceid=KR:ko
+OPENAI_API_KEY=your_openai_api_key
 ```
 
-### 1-1. n8n 실행 및 확인
+### 4. 애플리케이션 실행
 ```bash
-# n8n 실행 (24시간 자동화를 위해서는 항상 실행 상태 유지 필요)
-npx n8n start
-
-# 브라우저에서 n8n 대시보드 접속
-# http://localhost:5678
-
-# 환경변수 검증 (선택사항)
-node test-scheduled-content.js
+npm start
 ```
 
-**⚠️ 중요: n8n은 컴퓨터가 켜져있고 프로세스가 실행 중일 때만 작동합니다!**
+## 📋 사용 방법
 
-### 2. Google Sheets 설정
-1. 새 Google Sheets 문서 생성
-2. 시트 이름을 `processed_links`로 변경
-3. 헤더 설정:
-   - A1: `original_link`
-   - B1: `post_title`
-   - C1: `pub_date`
-   - D1: `processed_date`
+### GUI 설정
+1. **환경설정 탭**: 티스토리 계정 정보 입력
+2. **스케줄 탭**: 실행 모드 및 옵션 설정
+   - **기존 기사도 포스팅**: 체크 시 이전 기사도 재포스팅
+3. **RSS & 콘텐츠 탭**: RSS 소스 및 필터링 설정
+4. **HTML 설정 탭**: 포스팅 템플릿 설정
+5. **AI 설정 탭**: OpenAI API 연동 및 기능 설정
 
-### 3. n8n 워크플로우 가져오기
-1. n8n 대시보드에서 "Import from file" 선택
-2. `n8n-workflow.json` 파일 업로드
-3. 노드별 설정 업데이트:
-   - Google Sheets 문서 ID
-   
-   - 환경변수 확인
+### 자동화 실행
+- **테스트**: RSS 피드 및 AI 연결 상태 확인
+- **시작**: 자동화 프로세스 시작
+- **중단**: 실행 중인 프로세스 및 스케줄 중지
 
-### 4. 워크플로우 테스트
+## 🔧 고급 설정
+
+### allowRepost 기능
+- GUI에서 "기존 기사도 포스팅" 체크박스 활성화
+- 새 기사가 없을 때도 과거 기사를 최대 개수만큼 포스팅
+- 중복 포스팅 방지 기록 무시
+
+### OpenAI API 연동
+```json
+{
+  "ai": {
+    "enabled": true,
+    "apiKey": "sk-your-api-key",
+    "model": "gpt-3.5-turbo",
+    "improveTitle": true,
+    "improveContent": true,
+    "generateTags": true,
+    "translateContent": true
+  }
+}
+```
+
+### HTML 템플릿 옵션
+- **Rich**: 풍부한 스타일링 (기본)
+- **Simple**: 간단한 스타일링  
+- **Minimal**: 최소한의 스타일
+
+## 🚨 문제 해결
+
+### 포스팅 실패 문제
+```
+에러 출력:  ùٸ ʽϴ.
+```
+**해결책**: 
+1. Puppeteer headless="new" 모드로 업데이트됨
+2. HTML 모드 전환 실패 시 자동으로 텍스트 모드로 폴백
+3. 한글 인코딩 설정 추가
+
+### API 키 보안 오류
+GitHub Push Protection에서 API 키 감지 시:
+1. `gui-config.json`이 `.gitignore`에 추가됨
+2. `gui-config.example.json` 파일 참조하여 설정
+3. 민감한 정보는 로컬에서만 관리
+
+### 환경변수 오류
 ```bash
-# 테스트 스크립트 실행
-node test-n8n-workflow.js
-```
+# PowerShell에서 환경변수 확인
+node -e "console.log('TISTORY_ID:', process.env.TISTORY_ID ? '설정됨' : '미설정')"
 
-## 📊 워크플로우 단계
-
-### Step 1: RSS Feed Read
-- **기능**: 설정된 RSS 피드 모니터링
-- **기본값**: Google News (한국어)
-- **설정**: `RSS_FEED_URL` 환경변수로 변경 가능
-- **트리거**: 주기적 실행 (예: 1시간마다)
-
-### Step 2: 중복 확인
-- **기능**: Google Sheets에서 이미 처리된 글인지 확인
-- **방법**: 원문 링크 기준 중복 검사
-
-### Step 3: 원문 추출
-- **기능**: RSS 요약이 아닌 전체 원문 추출
-- **방법**: HTTP Request + HTML 파싱
-
-### Step 4: LLM 1차 분석
-- **기능**: 원문을 한국어로 번역하고 핵심 내용 구조화
-- **모델**: GPT-4
-- **출력**: JSON 형식의 구조화된 분석 결과
-
-### Step 5: LLM 2차 재창조
-- **기능**: 국내 독자를 위한 블로그 포스트 재창조
-- **특징**: 
-  - 카카오, 토스 등 국내 서비스 사례 추가
-  - [인사이트+] 섹션으로 독창적 해석 제공
-  - SEO 최적화된 HTML 구조
-
-### Step 6: 티스토리 포스팅
-- **기능**: 완성된 콘텐츠를 티스토리에 자동 발행
-- **방법**: Puppeteer 기반 브라우저 자동화
-
-### Step 7: 처리 기록
-- **기능**: 처리된 글 정보를 Google Sheets에 저장
-- **목적**: 중복 방지 및 이력 관리
-
-## 🔧 파일 설명
-
-### 핵심 파일
-- `n8n-workflow.json`: n8n 워크플로우 정의 파일
-- `tistory-poster-n8n.js`: n8n용 최적화된 티스토리 포스터
-- `tistory-poster-fixed.js`: 독립 실행용 안정 버전
-- `test-n8n-workflow.js`: 워크플로우 테스트 스크립트
-- `workflow-setup.md`: 상세 설정 가이드
-
-## ⚙️ 환경 설정
-
-### 필수 환경변수
-```bash
-# 티스토리 계정 정보
-TISTORY_ID=your_email@gmail.com
-TISTORY_PW=your_password
-BLOG_ADDRESS=https://your-blog.tistory.com
-
-# RSS 피드 URL (선택사항, 기본값: Google News)
-RSS_FEED_URL=https://your-rss-feed-url.com/feed
-
-
-
-# Google Sheets (n8n 워크플로우용)
-GOOGLE_SHEETS_DOCUMENT_ID=your_sheet_id
-```
-
-### .env 파일 생성
-프로젝트 루트에 `.env` 파일을 생성하고 위 환경변수들을 설정하세요.
-
-### PowerShell에서 환경변수 설정 (Windows)
-```powershell
+# 환경변수 설정
 $env:TISTORY_ID="your_email@gmail.com"
 $env:TISTORY_PW="your_password"
-$env:BLOG_ADDRESS="https://your-blog.tistory.com"
-$env:RSS_FEED_URL="https://your-rss-feed-url.com/feed"
 ```
 
-## 🧪 테스트
+## 📁 파일 구조
 
-### 독립 스크립트 테스트
-```bash
-# 기본 테스트
-node tistory-poster-fixed.js "테스트 제목" "<p>테스트 내용</p>"
-
-# 환경변수 확인
-node -e "console.log('TISTORY_ID:', process.env.TISTORY_ID ? '설정됨' : '미설정')"
+```
+n8-auto-blog/
+├── src/                          # Electron GUI 소스
+│   ├── main.js                   # 메인 프로세스
+│   ├── preload.js               # Preload 스크립트
+│   └── renderer/                # 렌더러 프로세스
+├── auto-poster-with-config.js   # 자동화 메인 스크립트
+├── tistory-poster-fixed.js      # 티스토리 포스터 (개선됨)
+├── enhanced-content-extractor.js # 향상된 콘텐츠 추출기
+├── tistory-safe-template.js     # 안전한 HTML 템플릿
+├── config.js                    # 기본 설정
+├── gui-config.example.json      # 설정 파일 예제
+└── test-*.js                    # 테스트 스크립트들
 ```
 
-### n8n 워크플로우 테스트
-```bash
-# 전체 워크플로우 시뮬레이션
-node test-n8n-workflow.js
+## 📊 성능 최적화
 
-# 개별 컴포넌트 테스트
-node -e "require('./test-n8n-workflow').testLLMResponseParsing()"
-```
-
-## 🔍 문제 해결
-
-### 일반적인 문제
-1. **로그인 실패**: 티스토리 계정 정보 및 2단계 인증 확인
-2. **모달 처리 실패**: headless: false로 설정하여 브라우저 동작 확인
-3. **환경변수 오류**: .env 파일 또는 시스템 환경변수 설정 확인
-4. **Navigation timeout**: 네트워크 연결 및 페이지 로딩 시간 확인
-5. **스케줄링 실행 안됨**: n8n 프로세스 실행 상태 및 워크플로우 활성화 확인
-
-### n8n 관련 문제 해결
-1. **n8n이 실행되지 않음**:
-   ```bash
-   # n8n 프로세스 확인
-   Get-Process | Where-Object {$_.ProcessName -like "*n8n*"}
-   
-   # n8n 재시작
-   npx n8n start
-   ```
-
-2. **워크플로우가 실행되지 않음**:
-   - http://localhost:5678 접속하여 워크플로우 상태 확인
-   - 워크플로우 활성화 버튼 클릭
-   - Executions 탭에서 실행 이력 확인
-
-3. **스케줄된 시간에 포스팅이 안됨**:
-   ```bash
-   # 환경변수 확인
-   node test-scheduled-content.js
-   
-   # 수동 실행 테스트
-   # n8n 대시보드에서 "Execute Workflow" 클릭
-   ```
-
-### 디버깅 팁
-```bash
-# 브라우저 화면 보기 (headless: false)
-# tistory-poster-fixed.js에서 headless: false로 변경
-
-# 상세 로그 확인
-node tistory-poster-fixed.js "제목" "내용" 2>&1 | tee debug.log
-
-# 환경변수 전체 확인
-node -e "console.log('환경변수 확인:', {TISTORY_ID: !!process.env.TISTORY_ID, TISTORY_PW: !!process.env.TISTORY_PW, BLOG_ADDRESS: !!process.env.BLOG_ADDRESS})"
-```
-
-## 📊 모니터링 및 운영
-
-### n8n 대시보드 모니터링
-```
-URL: http://localhost:5678
-주요 확인 사항:
-- Workflows: 워크플로우 활성화 상태
-- Executions: 실행 이력 및 성공/실패 상태
-- Settings: 환경변수 및 설정 확인
-```
-
-### 실행 환경별 특징
-| 환경 | 장점 | 단점 | 권장 용도 |
-|------|------|------|-----------|
-| **로컬 실행** | 무료, 즉시 테스트 가능 | 컴퓨터 종료 시 중단 | 개발/테스트 |
-| **n8n Cloud** | 24시간 자동 실행, 관리 편의 | 유료 ($20/월~) | 운영 환경 |
-| **자체 서버** | 완전한 제어, 비용 효율적 | 서버 관리 필요 | 고급 사용자 |
-
-### 24시간 자동화 방법
-1. **n8n Cloud 사용 (권장)**:
-   - https://n8n.cloud 가입
-   - 워크플로우 업로드
-   - 환경변수 설정
-
-2. **로컬 24시간 실행**:
-   ```bash
-   # Windows 작업 스케줄러 등록
-   # 또는 백그라운드 실행
-   Start-Process -FilePath "npx" -ArgumentList "n8n", "start" -WindowStyle Hidden
-   ```
-
-## 📈 성능 최적화
-
-### n8n 워크플로우 최적화
-- **폴링 간격**: RSS 피드 업데이트 빈도에 맞춰 조정 (권장: 1-2시간)
-- **LLM 토큰 관리**: 긴 원문의 경우 요약 후 분석
-- **에러 재시도**: 네트워크 오류 시 자동 재시도 로직
-- **병렬 처리**: 여러 RSS 소스 동시 처리
-
-### 리소스 관리
-- **메모리**: Puppeteer 브라우저 인스턴스 적절한 종료
-- **네트워크**: 안정적인 인터넷 연결 유지
-- **스토리지**: Google Sheets 행 수 관리
-
-## 📅 스케줄링 기능 (NEW!)
-
-### 환경변수 기반 스케줄링
-```bash
-# 스케줄된 콘텐츠 설정
-CONTENTS_NUMBER=1
-1_TIME=2025-06-08, 21:22 KST
-1_URL=https://notebooklm.google.com/notebook/cd72861d-291e-4341-9478-3f0b2a948a85
-1_PROCESSED=false
-```
-
-### 사용 방법
-1. **워크플로우 가져오기**: `scheduled-content-workflow.json`
-2. **환경변수 설정**: 위 형식으로 콘텐츠 스케줄 등록
-3. **자동 실행**: 매시간 스케줄 확인 후 자동 포스팅
-4. **모니터링**: n8n 대시보드에서 실행 상태 확인
-
-### 지원하는 콘텐츠 소스
-- NotebookLM 공유 링크
-- 일반 웹사이트 및 블로그
-- 뉴스 기사 및 기술 문서
-
-자세한 내용은 `scheduled-content-setup.md` 참조
-
-## 🔄 확장 가능성
-
-### 추가 기능 아이디어
-1. **다중 RSS 소스**: UX Planet, Smashing Magazine 등 추가
-2. **카테고리 자동 분류**: 콘텐츠 내용 기반 카테고리 설정
-3. **이미지 자동 생성**: DALL-E API 연동으로 썸네일 생성
-4. **소셜 미디어 연동**: 트위터, 링크드인 자동 공유
-5. **SEO 최적화**: 메타 태그, 구조화된 데이터 자동 생성
-
-### 다른 플랫폼 지원
-- **네이버 블로그**: 네이버 블로그 API 연동
-- **브런치**: 브런치 자동 포스팅 추가
-- **미디엄**: Medium API 연동
-- **워드프레스**: WordPress REST API 활용
+- **메모리 최적화**: Puppeteer 인스턴스 적절한 종료
+- **네트워크 최적화**: User-Agent 헤더 및 타임아웃 설정
+- **오류 처리**: 재시도 로직 및 폴백 메커니즘
+- **보안**: 민감한 정보 자동 보호
 
 ## 🤝 기여하기
 
-1. 이 저장소를 Fork 하세요
-2. 새로운 기능 브랜치를 생성하세요 (`git checkout -b feature/AmazingFeature`)
-3. 변경사항을 커밋하세요 (`git commit -m 'Add some AmazingFeature'`)
-4. 브랜치에 Push 하세요 (`git push origin feature/AmazingFeature`)
-5. Pull Request를 생성하세요
+1. Fork 프로젝트
+2. Feature 브랜치 생성
+3. 변경사항 커밋
+4. Pull Request 생성
 
 ## 📝 라이선스
 
-이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
+MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일 참조
 
 ## ⚠️ 주의사항
 
-- 이 도구는 교육 및 개인 사용 목적으로 제작되었습니다
-- 티스토리 이용약관을 준수하여 사용하세요
-- RSS 피드 제공자의 이용약관을 확인하세요
-- 대용량 콘텐츠 처리 시 시간이 오래 걸릴 수 있습니다
+- 이 도구는 교육 및 개인 사용 목적입니다
+- 티스토리 이용약관 준수 필요
+- OpenAI API 사용 시 요금 발생 가능
+- 민감한 정보는 로컬에서만 관리하세요
