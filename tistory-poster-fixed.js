@@ -70,7 +70,7 @@ async function postToTistory() {
         
         // Puppeteer 브라우저 설정
         browser = await puppeteer.launch({
-            headless: false, // 디버깅을 위해 브라우저 표시
+            headless: "new", // 새로운 headless 모드 사용
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -78,11 +78,18 @@ async function postToTistory() {
                 '--disable-accelerated-2d-canvas',
                 '--no-first-run',
                 '--no-zygote',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--lang=ko-KR',
+                '--accept-lang=ko-KR'
             ]
         });
 
         const page = await browser.newPage();
+        
+        // 한글 인코딩 설정
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
+        });
         
         // 네이티브 모달 자동 처리 설정
         setupNativeModalHandlers(page);
@@ -486,97 +493,79 @@ async function navigateToWritePage(page) {
  * 포스트 작성 함수
  */
 async function writePost(page) {
-    // 제목 입력란 찾기
-    const titleSelectors = [
-        '#post-title-inp',
-        'input[name="title"]',
-        'input[placeholder*="제목"]',
-        '.title-input',
-        '#title',
-        'input[id*="title"]'
-    ];
-
-    let titleInput = null;
-    for (const selector of titleSelectors) {
-        try {
-            titleInput = await page.$(selector);
-            if (titleInput) {
-                console.log(`✅ 제목 입력란 사용: ${selector}`);
-                break;
-            }
-        } catch (error) {
-            // 선택자를 찾지 못한 경우 다음 시도
-        }
-    }
-
-    if (!titleInput) {
-        throw new Error('제목 입력란을 찾을 수 없습니다.');
-    }
-
-    // 제목 입력
-    await titleInput.click();
-    await titleInput.evaluate(input => input.value = '');
-    await titleInput.type(postTitle, { delay: 50 });
-
-    // HTML 모드로 전환
-    await switchToHTMLMode(page);
-
-    // 본문 내용 입력
-    await inputContent(page, postContentHTML);
+    console.log('🖊️ 글 작성을 시작합니다...');
     
-    // 내용 입력 검증
-    const contentVerified = await verifyContentInput(page, postContentHTML);
-    if (!contentVerified) {
-        console.log('⚠️ 내용 입력 검증 실패. 재시도합니다...');
-        
-        // 한 번 더 시도
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await inputContent(page, postContentHTML);
-        
-        const secondVerification = await verifyContentInput(page, postContentHTML);
-        if (!secondVerification) {
-            throw new Error('본문 내용 입력에 실패했습니다. 내용이 제대로 입력되지 않았습니다.');
-        }
-    }
-    
-    console.log('✅ 본문 내용 입력 및 검증 완료');
+    try {
+        // 제목 입력
+        console.log('📝 제목을 입력합니다...');
+        const titleSelector = 'input[name="title"], #title, .title-input, input[placeholder*="제목"]';
+        await page.waitForSelector(titleSelector, { timeout: 10000 });
+        await page.type(titleSelector, postTitle);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`✅ 제목 입력 완료: "${postTitle}"`);
 
-    // 카테고리 설정 (선택사항)
-    if (postCategory) {
+        // HTML 모드로 전환 시도
+        let htmlModeSuccess = false;
         try {
-            await page.waitForSelector('.category-list', { timeout: 3000 });
-            await page.click('.category-list');
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const categoryOption = await page.$x(`//span[contains(text(), "${postCategory}")]`);
-            if (categoryOption.length > 0) {
-                await categoryOption[0].click();
-                console.log(`📁 카테고리 "${postCategory}" 설정 완료`);
-            }
+            await switchToHTMLMode(page);
+            htmlModeSuccess = true;
+            console.log('✅ HTML 모드 전환 성공');
         } catch (error) {
-            console.log(`⚠️ 카테고리 "${postCategory}" 설정 실패:`, error.message);
+            console.log('⚠️ HTML 모드 전환 실패, 일반 텍스트 모드로 진행:', error.message);
+            htmlModeSuccess = false;
         }
-    }
 
-    // 태그 설정 (선택사항)
-    if (postTags) {
-        try {
-            const tags = postTags.split(',').map(tag => tag.trim());
-            const tagInput = await page.$('input[placeholder*="태그"]');
-            if (tagInput) {
-                for (const tag of tags) {
-                    await tagInput.type(tag);
-                    await page.keyboard.press('Enter');
-                    await new Promise(resolve => setTimeout(resolve, 300));
+        // 내용 입력
+        console.log('📄 본문 내용을 입력합니다...');
+        if (htmlModeSuccess) {
+            await inputContent(page, postContentHTML);
+        } else {
+            // HTML 태그 제거하여 일반 텍스트로 입력
+            const plainText = postContentHTML.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+            console.log('📄 HTML 태그 제거하여 일반 텍스트로 입력합니다...');
+            await inputContent(page, plainText);
+        }
+
+        // 카테고리 설정 (선택적)
+        if (postCategory) {
+            try {
+                await page.waitForSelector('.category-list', { timeout: 3000 });
+                await page.click('.category-list');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                const categoryOption = await page.$x(`//span[contains(text(), "${postCategory}")]`);
+                if (categoryOption.length > 0) {
+                    await categoryOption[0].click();
+                    console.log(`📁 카테고리 "${postCategory}" 설정 완료`);
                 }
-                console.log(`🏷️ 태그 설정 완료: ${tags.join(', ')}`);
+            } catch (error) {
+                console.log(`⚠️ 카테고리 "${postCategory}" 설정 실패:`, error.message);
             }
-        } catch (error) {
-            console.log(`⚠️ 태그 설정 실패:`, error.message);
         }
-    }
 
-    console.log('✅ 포스트 작성 완료');
+        // 태그 설정 (선택사항)
+        if (postTags) {
+            try {
+                const tags = postTags.split(',').map(tag => tag.trim());
+                const tagInput = await page.$('input[placeholder*="태그"]');
+                if (tagInput) {
+                    for (const tag of tags) {
+                        await tagInput.type(tag);
+                        await page.keyboard.press('Enter');
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                    console.log(`🏷️ 태그 설정 완료: ${tags.join(', ')}`);
+                }
+            } catch (error) {
+                console.log(`⚠️ 태그 설정 실패:`, error.message);
+            }
+        }
+
+        console.log('✅ 포스트 작성 완료');
+    } catch (error) {
+        console.error('❌ 포스트 작성 중 오류 발생:', error.message);
+        throw error;
+    }
 }
 
 /**
@@ -777,302 +766,19 @@ async function inputContent(page, content) {
 }
 
 /**
- * 입력된 내용 검증 함수
- */
-async function verifyContentInput(page, expectedContent) {
-    console.log('🔍 입력된 내용 검증 중...');
-    
-    try {
-        // CodeMirror에서 내용 확인
-        const codeMirrorContent = await page.evaluate(() => {
-            const editor = document.querySelector('.CodeMirror');
-            if (editor && editor.CodeMirror) {
-                return editor.CodeMirror.getValue();
-            }
-            return null;
-        });
-        
-        if (codeMirrorContent) {
-            console.log(`📊 CodeMirror 내용 길이: ${codeMirrorContent.length}자`);
-            if (codeMirrorContent.length > 100) {
-                console.log('✅ CodeMirror에 충분한 내용이 입력되었습니다.');
-                return true;
-            }
-        }
-        
-        // textarea에서 내용 확인
-        const textareaContent = await page.evaluate(() => {
-            const textareas = document.querySelectorAll('textarea');
-            for (let textarea of textareas) {
-                if (textarea.value && textarea.value.length > 100) {
-                    return textarea.value;
-                }
-            }
-            return null;
-        });
-        
-        if (textareaContent) {
-            console.log(`📊 textarea 내용 길이: ${textareaContent.length}자`);
-            console.log('✅ textarea에 충분한 내용이 입력되었습니다.');
-            return true;
-        }
-        
-        // contenteditable에서 내용 확인
-        const editableContent = await page.evaluate(() => {
-            const editables = document.querySelectorAll('[contenteditable="true"]');
-            for (let editable of editables) {
-                if (editable.innerHTML && editable.innerHTML.length > 100) {
-                    return editable.innerHTML;
-                }
-            }
-            return null;
-        });
-        
-        if (editableContent) {
-            console.log(`📊 contenteditable 내용 길이: ${editableContent.length}자`);
-            console.log('✅ contenteditable에 충분한 내용이 입력되었습니다.');
-            return true;
-        }
-        
-        console.log('⚠️ 입력된 내용이 충분하지 않습니다.');
-        return false;
-        
-    } catch (error) {
-        console.log('⚠️ 내용 검증 중 오류:', error.message);
-        return false;
-    }
-}
-
-/**
- * 포스트 발행 함수
- */
-async function publishPost(page) {
-    // 다양한 발행 버튼 선택자들 (저장 버튼부터 시도)
-    const publishSelectors = [
-        'button:contains("저장")',
-        'button:contains("임시저장")',
-        'button:contains("발행")',
-        'button:contains("공개 발행")',
-        'button:contains("게시")',
-        '#publish-btn',
-        'button#publish-btn',
-        'button[id="publish-btn"]',
-        '.btn-publish',
-        '.btn_publish',
-        'button[class*="publish"]',
-        '.publish-btn',
-        '.save-btn',
-        '#save-btn',
-        'input[value="발행"]',
-        'input[value="게시"]',
-        'input[value="저장"]',
-        '[data-role="publish"]',
-        '[data-action="publish"]'
-    ];
-
-    let publishButton = null;
-    
-    // 발행 버튼 찾기
-    for (const selector of publishSelectors) {
-        try {
-            await page.waitForSelector(selector, { timeout: 3000 });
-            publishButton = await page.$(selector);
-            if (publishButton) {
-                console.log(`✅ 발행 버튼 발견: ${selector}`);
-                break;
-            }
-        } catch (error) {
-            // 선택자를 찾지 못한 경우 다음 시도
-        }
-    }
-
-    if (!publishButton) {
-        // 발행 버튼을 찾지 못한 경우 페이지의 모든 버튼 확인
-        console.log('⚠️ 발행 버튼을 찾지 못했습니다. 페이지의 모든 버튼을 확인합니다...');
-        
-        // 페이지 하단으로 스크롤
-        await page.evaluate(() => {
-            window.scrollTo(0, document.body.scrollHeight);
-        });
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        const allButtons = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"]'));
-            return buttons.map(btn => ({
-                text: (btn.textContent || btn.value || '').trim(),
-                className: btn.className,
-                id: btn.id,
-                type: btn.type,
-                visible: btn.offsetParent !== null && btn.offsetWidth > 0 && btn.offsetHeight > 0
-            })).filter(btn => btn.visible && btn.text); // 보이는 버튼이면서 텍스트가 있는 것만
-        });
-        
-        console.log('📋 페이지의 모든 버튼들:', JSON.stringify(allButtons, null, 2));
-        
-        // 저장/발행 관련 버튼 찾기 (우선순위: 저장 > 발행 > 게시)
-        const targetButton = allButtons.find(btn => 
-            btn.text.includes('저장') || 
-            btn.text.includes('임시저장') ||
-            btn.id.includes('save')
-        ) || allButtons.find(btn => 
-            btn.text.includes('발행') || 
-            btn.text.includes('공개발행') ||
-            btn.id.includes('publish')
-        ) || allButtons.find(btn => 
-            btn.text.includes('게시') ||
-            btn.text.includes('완료')
-        );
-
-        if (targetButton) {
-            console.log(`✅ 저장/발행 버튼 발견: "${targetButton.text}" (ID: ${targetButton.id})`);
-            
-            // 버튼 클릭
-            if (targetButton.id) {
-                publishButton = await page.$(`#${targetButton.id}`);
-            } else {
-                // ID가 없는 경우 텍스트로 찾기
-                const buttonByText = await page.$x(`//button[contains(text(), "${targetButton.text}")]`);
-                if (buttonByText.length > 0) {
-                    publishButton = buttonByText[0];
-                }
-            }
-        }
-    }
-
-    if (!publishButton) {
-        throw new Error('발행 버튼을 찾을 수 없습니다. 페이지 구조를 확인해주세요.');
-    }
-
-    // 발행 버튼 클릭
-    console.log('📤 발행 버튼을 클릭합니다...');
-    await publishButton.click();
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 발행 확인 레이어 확인
-    await checkPublishConfirmation(page);
-
-    console.log('✅ 포스트 발행 완료');
-}
-
-/**
- * 모달 창 처리 함수 (예측 불가능한 모달 처리)
- */
-async function handleModals(page) {
-    console.log('🔍 예측 불가능한 모달 확인 중...');
-    
-    // 다양한 모달 관련 선택자들
-    const modalSelectors = [
-        '.modal',
-        '.popup',
-        '.layer',
-        '.dialog',
-        '[role="dialog"]',
-        '.overlay',
-        '.modal-dialog',
-        '.popup-layer',
-        '.alert',
-        '.notification',
-        '.toast'
-    ];
-
-    // 모달 닫기 버튼 선택자들
-    const closeButtonSelectors = [
-        '.close',
-        '.btn-close',
-        '.modal-close',
-        '.popup-close',
-        'button:contains("닫기")',
-        'button:contains("취소")',
-        'button:contains("확인")',
-        'button:contains("아니오")',
-        'button:contains("무시")',
-        'button:contains("나중에")',
-        '[aria-label="닫기"]',
-        '[aria-label="Close"]',
-        '.fa-times',
-        '.fa-close',
-        '.icon-close',
-        '[data-dismiss="modal"]'
-    ];
-
-    // 짧은 시간만 기다려서 모달 확인 (예측 불가능한 모달 대응)
-    for (const selector of modalSelectors) {
-        try {
-            await page.waitForSelector(selector, { timeout: 1000 }); // 1초만 대기
-            const modal = await page.$(selector);
-            if (modal) {
-                const isVisible = await page.evaluate(el => {
-                    const style = window.getComputedStyle(el);
-                    return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-                }, modal);
-                
-                if (isVisible) {
-                    console.log(`✅ 예측 불가능한 모달 발견: ${selector}`);
-                    
-                    // 디버깅용 스크린샷
-                    await page.screenshot({ path: 'modal-detected.png' });
-                    console.log('📸 모달 감지 스크린샷 저장: modal-detected.png');
-                    
-                    // 모달 닫기 시도
-                    await closeModal(page, closeButtonSelectors);
-                    return;
-                }
-            }
-        } catch (error) {
-            // 타임아웃은 정상 - 모달이 없다는 의미
-        }
-    }
-
-    console.log('✅ 예측 불가능한 모달 없음 - 정상 진행');
-}
-
-/**
- * 모달 닫기 공통 함수
- */
-async function closeModal(page, closeButtonSelectors) {
-    console.log('🔄 모달 닫기 시도...');
-    
-    // 닫기 버튼 찾아서 클릭
-    for (const selector of closeButtonSelectors) {
-        try {
-            const closeButton = await page.$(selector);
-            if (closeButton) {
-                const isVisible = await page.evaluate(el => {
-                    const style = window.getComputedStyle(el);
-                    return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-                }, closeButton);
-                
-                if (isVisible) {
-                    console.log(`✅ 닫기 버튼 클릭: ${selector}`);
-                    await closeButton.click();
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    return true;
-                }
-            }
-        } catch (error) {
-            // 계속 시도
-        }
-    }
-
-    // ESC 키로도 시도
-    try {
-        await page.keyboard.press('Escape');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log('⌨️ ESC 키로 모달 닫기 시도');
-        return true;
-    } catch (error) {
-        console.log('⚠️ 모달 닫기 실패');
-        return false;
-    }
-}
-
-/**
  * HTML 모드로 전환하는 함수
  */
 async function switchToHTMLMode(page) {
     console.log('🔄 HTML 모드로 전환 시도...');
     
     try {
+        // 페이지 상태 확인
+        const pageUrl = page.url();
+        console.log(`📍 현재 페이지: ${pageUrl}`);
+        
+        // 페이지 로딩 완료 대기
+        await page.waitForLoadState?.('networkidle') || new Promise(resolve => setTimeout(resolve, 3000));
+        
         // 현재 모드 확인
         const currentMode = await page.evaluate(() => {
             // HTML 모드 표시 확인
@@ -1090,31 +796,40 @@ async function switchToHTMLMode(page) {
             return;
         }
         
+        // 에디터 로딩 완료 대기
+        await page.waitForSelector('#editor-mode-layer-btn-open', { timeout: 10000 });
+        console.log('✅ 에디터 모드 버튼 대기 완료');
+        
         // 기본모드 버튼 클릭 (드롭다운 열기)
         const modeButton = await page.$('#editor-mode-layer-btn-open');
         if (modeButton) {
             console.log('✅ 에디터 모드 버튼 발견');
             await modeButton.click();
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // HTML 모드 옵션 대기
+            await page.waitForSelector('#editor-mode-html', { timeout: 5000 });
             
             // HTML 모드 선택
             const htmlModeOption = await page.$('#editor-mode-html');
             if (htmlModeOption) {
                 console.log('✅ HTML 모드 옵션 발견');
                 await htmlModeOption.click();
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 // HTML 모드 전환 시 나타나는 모달 처리
                 console.log('🔍 HTML 모드 전환 모달 확인 중...');
                 await handleHTMLModeModal(page);
                 
-                await new Promise(resolve => setTimeout(resolve, 5000)); // 모드 전환 완료 대기 (더 길게)
+                await new Promise(resolve => setTimeout(resolve, 8000)); // 모드 전환 완료 대기 (더 길게)
                 
                 // 전환 완료 확인
                 const newMode = await page.evaluate(() => {
                     const htmlIndicator = document.querySelector('#editor-mode-layer-btn-open');
                     return htmlIndicator ? htmlIndicator.textContent.trim() : 'unknown';
                 });
+                
+                console.log(`📊 전환 후 에디터 모드: ${newMode}`);
                 
                 if (newMode.includes('HTML') || newMode.includes('html')) {
                     console.log('✅ HTML 모드로 전환 완료');
@@ -1140,36 +855,22 @@ async function switchToHTMLMode(page) {
                 }
             } else {
                 console.log('⚠️ HTML 모드 옵션을 찾을 수 없습니다.');
+                throw new Error('HTML 모드 옵션 없음');
             }
         } else {
             console.log('⚠️ 에디터 모드 버튼을 찾을 수 없습니다.');
-            
-            // 대안: 다른 방법으로 HTML 모드 전환 시도
-            const alternativeSelectors = [
-                'button[title*="HTML"]',
-                'a[href*="html"]',
-                '.html-mode',
-                '.mode-html',
-                '[data-mode="html"]'
-            ];
-            
-            for (const selector of alternativeSelectors) {
-                try {
-                    const element = await page.$(selector);
-                    if (element) {
-                        console.log(`✅ 대안 HTML 모드 버튼 발견: ${selector}`);
-                        await element.click();
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        break;
-                    }
-                } catch (error) {
-                    // 계속 시도
-                }
-            }
+            throw new Error('에디터 모드 버튼 없음');
         }
     } catch (error) {
-        console.log('⚠️ HTML 모드 전환 실패:', error.message);
-        console.log('기본 모드에서 계속 진행합니다.');
+        console.error('❌ HTML 모드 전환 실패:', error.message);
+        console.log('📸 오류 발생 시점 스크린샷 저장...');
+        try {
+            await page.screenshot({ path: 'html-mode-error.png', fullPage: true });
+            console.log('📸 스크린샷 저장됨: html-mode-error.png');
+        } catch (screenshotError) {
+            console.log('⚠️ 스크린샷 저장 실패');
+        }
+        throw error; // 상위로 에러 전달
     }
 }
 

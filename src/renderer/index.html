@@ -6,6 +6,16 @@
     <title>티스토리 자동화 관리자</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Toast CSS -->
+    <style>
+      .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+      .toast { min-width: 200px; margin-bottom: 10px; padding: 10px 20px; border-radius: 4px; color: #fff; opacity: 0.9; display: flex; align-items: center; }
+      .toast-success { background-color: #28a745; }
+      .toast-error { background-color: #dc3545; }
+      .toast-warning { background-color: #ffc107; color: #212529; }
+      .toast-info { background-color: #17a2b8; }
+      .toast i { margin-right: 8px; }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -188,6 +198,12 @@
                         <div class="form-group">
                             <label for="enable-scheduler">스케줄러 활성화</label>
                             <input type="checkbox" id="enable-scheduler" class="toggle" checked>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="allow-repost">기존 기사도 포스팅</label>
+                            <input type="checkbox" id="allow-repost" class="toggle">
+                            <small>이전 기사를 다시 포스팅합니다</small>
                         </div>
                     </div>
                 </div>
@@ -508,13 +524,8 @@
         </div>
     </div>
 
-    <!-- 메시지 모달 -->
-    <div id="message-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <div id="modal-message"></div>
-        </div>
-    </div>
+    <!-- 토스트 메시지 컨테이너 -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- 로딩 스피너 -->
     <div id="loading-spinner" class="loading-spinner">

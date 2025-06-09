@@ -17,6 +17,12 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeApp() {
     console.log('티스토리 자동화 GUI가 시작되었습니다.');
     
+    // 이벤트 리스너 설정
+    setupEventListeners();
+    
+    // 탭 네비게이션 설정
+    setupTabNavigation();
+    
     // 현재 날짜 설정
     const today = new Date().toISOString().split('T')[0];
     const scheduledDateInput = document.getElementById('scheduled-date');
@@ -30,11 +36,22 @@ function initializeApp() {
         rssUrlInput.value = 'https://news.google.com/rss?topic=h&gl=KR&ceid=KR:ko';
     }
     
+    // 설정 로드 후 요약 업데이트
+    loadCurrentConfig().then(() => {
+        updateCurrentSettings();
+    });
+    
     // HTML 모드 기본값 설정
     updateHTMLOptionsVisibility();
     updateAIOptionsVisibility();
     updateScheduleOptionsVisibility();
     updateRSSSourceOptions();
+    
+    // Electron API 확인
+    if (!window.electronAPI) {
+        console.warn('Electron API가 사용 불가능합니다. 일부 기능이 제한될 수 있습니다.');
+        showMessage('Electron API에 연결할 수 없습니다. 일부 기능이 제한될 수 있습니다.', 'warning');
+    }
 }
 
 /**
@@ -45,6 +62,8 @@ async function loadCurrentConfig() {
         const config = await window.electronAPI?.loadConfig() || {};
         currentConfig = config;
         populateFormFromConfig(currentConfig);
+        // 설정 로드 후 요약 업데이트
+        updateCurrentSettings();
     } catch (error) {
         console.error('설정 로드 중 오류:', error);
         showMessage('설정을 불러오는 중 오류가 발생했습니다.', 'error');
@@ -81,6 +100,7 @@ function populateFormFromConfig(config) {
         setInputValue('max-articles', config.schedule.maxArticles);
         setInputValue('post-interval', config.schedule.interval);
         setCheckboxValue('enable-scheduler', config.schedule.enabled);
+        setCheckboxValue('allow-repost', config.schedule.allowRepost);
         
         if (config.schedule.scheduledDate) {
             setInputValue('scheduled-date', config.schedule.scheduledDate);
@@ -341,32 +361,62 @@ function updateTemplatePreview() {
 }
 
 /**
- * 현재 설정 요약 업데이트
+ * 현재 설정 요약 업데이트 (실제 저장된 설정 기반)
  */
 function updateCurrentSettings() {
-    const scheduleMode = document.getElementById('execution-mode')?.value || '설정되지 않음';
-    const htmlEnabled = document.getElementById('html-enabled')?.checked;
-    const aiEnabled = document.getElementById('ai-enabled')?.checked;
+    // currentConfig가 없으면 DOM에서 읽기
+    const config = currentConfig || {};
+    
+    // 스케줄 설정
+    const scheduleMode = config.schedule?.mode || document.getElementById('execution-mode')?.value || 'manual';
+    const scheduleEnabled = config.schedule?.enabled || document.getElementById('enable-scheduler')?.checked || false;
     
     // 실행 날짜 설정 표시
     let dateSettingText = '수동 실행';
-    if (scheduleMode === 'auto') {
-        const autoType = document.getElementById('auto-schedule-type')?.value;
+    if (scheduleEnabled && scheduleMode === 'auto') {
+        const autoType = config.schedule?.type || document.getElementById('auto-schedule-type')?.value;
         dateSettingText = getScheduleTypeText(autoType);
-    } else if (scheduleMode === 'scheduled') {
-        const date = document.getElementById('scheduled-date')?.value;
-        const time = document.getElementById('scheduled-time')?.value;
+    } else if (scheduleEnabled && scheduleMode === 'scheduled') {
+        const date = config.schedule?.scheduledDate || document.getElementById('scheduled-date')?.value;
+        const time = config.schedule?.scheduledTime || document.getElementById('scheduled-time')?.value;
         if (date && time) {
-            dateSettingText = `${date} ${time}`;
+            const repeatType = config.schedule?.repeatType || document.getElementById('repeat-type')?.value;
+            const repeatText = getRepeatTypeText(repeatType);
+            dateSettingText = `${date} ${time} (${repeatText})`;
         }
     }
+    
+    // RSS 소스 설정
+    const rssSourceType = config.rss?.sourceType || document.getElementById('rss-source-type')?.value || 'custom';
+    const rssUrl = config.rss?.url || document.getElementById('rss-url')?.value || '';
+    
+    // HTML 모드 설정
+    const htmlEnabled = config.html?.enabled !== undefined 
+        ? config.html.enabled 
+        : (document.getElementById('html-enabled')?.checked || false);
+    const htmlTemplate = config.html?.template || document.getElementById('html-template')?.value || 'rich';
+    
+    // AI 기능 설정
+    const aiEnabled = config.ai?.enabled !== undefined 
+        ? config.ai.enabled 
+        : (document.getElementById('ai-enabled')?.checked || false);
+    const aiModel = config.ai?.model || document.getElementById('ai-model')?.value || 'gpt-3.5-turbo';
     
     // DOM 업데이트
     setElementText('current-schedule-mode', getExecutionModeText(scheduleMode));
     setElementText('current-date-setting', dateSettingText);
-    setElementText('current-rss-source', getRSSSourceText());
-    setElementText('current-html-mode', htmlEnabled ? '활성화됨' : '비활성화됨');
-    setElementText('current-ai-status', aiEnabled ? '활성화됨' : '비활성화됨');
+    setElementText('current-rss-source', getRSSSourceTextFromConfig(rssSourceType, rssUrl));
+    setElementText('current-html-mode', htmlEnabled ? `활성화됨 (${getTemplateText(htmlTemplate)})` : '비활성화됨');
+    setElementText('current-ai-status', aiEnabled ? `활성화됨 (${aiModel})` : '비활성화됨');
+    
+    // 추가 정보 업데이트
+    if (config.schedule?.maxArticles) {
+        setElementText('current-max-articles', `최대 ${config.schedule.maxArticles}개 기사`);
+    }
+    
+    // 마지막 업데이트 시간 표시
+    const now = new Date().toLocaleString('ko-KR');
+    setElementText('settings-last-updated', `마지막 업데이트: ${now}`);
 }
 
 /**
@@ -407,6 +457,55 @@ function getRSSSourceText() {
         'custom': '사용자 정의 RSS'
     };
     return sourceTexts[sourceType] || 'Google News (한국)';
+}
+
+/**
+ * 설정 기반 RSS 소스 텍스트 반환
+ */
+function getRSSSourceTextFromConfig(sourceType, rssUrl) {
+    const sourceTexts = {
+        'google-news': 'Google News (한국)',
+        'google-news-custom': 'Google News (카테고리별)',
+        'custom': '사용자 정의 RSS'
+    };
+    
+    let sourceText = sourceTexts[sourceType] || '사용자 정의 RSS';
+    
+    // URL이 NNGroup인 경우 특별 표시
+    if (rssUrl && rssUrl.includes('nngroup.com')) {
+        sourceText = 'Nielsen Norman Group (UX 연구)';
+    } else if (sourceType === 'custom' && rssUrl) {
+        const urlHost = new URL(rssUrl).hostname.replace('www.', '');
+        sourceText = `사용자 정의 (${urlHost})`;
+    }
+    
+    return sourceText;
+}
+
+/**
+ * 반복 타입 텍스트 반환
+ */
+function getRepeatTypeText(type) {
+    const typeTexts = {
+        'once': '한 번만',
+        'daily': '매일 반복',
+        'weekly': '매주 반복',
+        'monthly': '매월 반복'
+    };
+    return typeTexts[type] || '한 번만';
+}
+
+/**
+ * 템플릿 타입 텍스트 반환
+ */
+function getTemplateText(template) {
+    const templateTexts = {
+        'rich': '풍부한 스타일',
+        'simple': '간단한 스타일',
+        'minimal': '최소한 스타일',
+        'plain': '플레인 텍스트'
+    };
+    return templateTexts[template] || '풍부한 스타일';
 }
 
 /**
@@ -582,7 +681,8 @@ function collectCurrentConfig() {
             repeatType: document.getElementById('repeat-type')?.value || 'once',
             maxArticles: parseInt(document.getElementById('max-articles')?.value) || 3,
             interval: parseInt(document.getElementById('post-interval')?.value) || 30,
-            enabled: document.getElementById('enable-scheduler')?.checked || false
+            enabled: document.getElementById('enable-scheduler')?.checked || false,
+            allowRepost: document.getElementById('allow-repost')?.checked || false
         },
         html: {
             enabled: document.getElementById('html-enabled')?.checked || false,
@@ -804,21 +904,18 @@ function updateAutomationStatus(status) {
 }
 
 /**
- * 메시지 모달 표시
+ * 토스트 메시지 표시 (3초 후 자동 사라짐)
  */
 function showMessage(message, type = 'info') {
-    const modal = document.getElementById('message-modal');
-    const messageDiv = document.getElementById('modal-message');
-    
-    if (modal && messageDiv) {
-        messageDiv.innerHTML = `
-            <div class="message-${type}">
-                <i class="fas fa-${getIconForType(type)}"></i>
-                <span>${message}</span>
-            </div>
-        `;
-        modal.style.display = 'block';
-    }
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<i class="fas fa-${getIconForType(type)}"></i><span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        container.removeChild(toast);
+    }, 3000);
 }
 
 /**

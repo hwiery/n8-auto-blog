@@ -1,12 +1,12 @@
 {
   "tistory": {
-    "id": "hwiery@gmail.com",
-    "password": "1q2w3e4r5t",
-    "blogAddress": "vibecoderyangc.tistory.com"
+    "id": "your_tistory_email@gmail.com",
+    "password": "your_tistory_password",
+    "blogAddress": "https://your-blog.tistory.com"
   },
   "rss": {
-    "url": "https://www.nngroup.com/feed/rss/",
-    "sourceType": "custom",
+    "url": "https://news.google.com/rss?topic=h&gl=KR&ceid=KR:ko",
+    "sourceType": "google-news",
     "category": "h",
     "keywordFilter": "",
     "excludeKeywords": "",
@@ -17,15 +17,16 @@
     "mode": "manual",
     "type": "daily_9am",
     "customCron": "",
-    "scheduledDate": "2025-06-09",
+    "scheduledDate": "",
     "scheduledTime": "09:00",
     "repeatType": "once",
     "maxArticles": 3,
     "interval": 30,
-    "enabled": false
+    "enabled": false,
+    "allowRepost": false
   },
   "html": {
-    "enabled": false,
+    "enabled": true,
     "template": "rich",
     "includeImages": false,
     "autoParagraph": true,
@@ -33,7 +34,7 @@
   },
   "ai": {
     "enabled": false,
-    "apiKey": "",
+    "apiKey": "your_openai_api_key_here",
     "model": "gpt-3.5-turbo",
     "improveTitle": false,
     "improveContent": false,
@@ -46,4 +47,4 @@
     "headless": true,
     "autoRetry": true
   }
-}
+} 

@@ -30,7 +30,10 @@ module.exports = {
     maxArticlesPerRun: 3,
     
     // 포스팅 간격 (밀리초, 기본 30초)
-    intervalBetweenPosts: 30000
+    intervalBetweenPosts: 30000,
+    
+    // Add allowRepost option to enable posting existing articles when 새기사 없음
+    allowRepost: false
   },
 
   // ========================================
@@ -114,7 +117,23 @@ module.exports = {
   },
 
   // ========================================
-  // 5. 디버깅 및 로깅 설정
+  // 5. RSS 피드 설정
+  // ========================================
+  rss: {
+    // RSS 피드 URL (환경변수가 우선됨)
+    url: process.env.RSS_FEED_URL || 'https://uxplanet.org/feed',
+    
+    // RSS 파싱 설정
+    timeout: 10000, // 10초
+    maxRetries: 3,
+    
+    // 피드 캐시 설정
+    enableCache: true,
+    cacheTime: 300000 // 5분
+  },
+
+  // ========================================
+  // 6. 디버깅 및 로깅 설정
   // ========================================
   debug: {
     // 디버그 모드 활성화

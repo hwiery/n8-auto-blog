@@ -8,15 +8,6 @@
   "homepage": ".",
   "scripts": {
     "start": "electron src/main.js",
-    "dev": "NODE_ENV=development electron src/main.js",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build:all": "electron-builder -mwl",
-    "dist": "npm run build",
-    "pack": "electron-builder --dir",
-    "postinstall": "electron-builder install-app-deps",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "build": {

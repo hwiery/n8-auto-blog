@@ -43,7 +43,8 @@ const DEFAULT_CONFIG = {
         repeatType: 'once',
         maxArticles: 3,
         interval: 30,
-        enabled: false
+        enabled: false,
+        allowRepost: false
     },
     html: {
         enabled: true,
@@ -144,7 +145,7 @@ app.whenReady().then(() => {
     createWindow();
     setupIPC();
     
-    console.log('🚀 티스토리 자동화 GUI 애플리케이션이 시작되었습니다.');
+    console.log('티스토리 자동화 GUI 애플리케이션이 시작되었습니다.');
     
     // macOS에서 독 아이콘 클릭 시 윈도우 재생성
     app.on('activate', () => {
@@ -365,7 +366,13 @@ function setupIPC() {
  */
 async function startAutomationProcess(config) {
     return new Promise((resolve, reject) => {
-        const scriptPath = path.join(__dirname, '..', 'auto-poster-with-config.js');
+        // 스크립트 경로를 완전한 절대 경로로 설정
+        const projectRoot = path.resolve(__dirname, '..');
+        const scriptPath = path.resolve(projectRoot, 'auto-poster-with-config.js');
+        
+        console.log('자동화 스크립트 실행:', scriptPath);
+        console.log('__dirname:', __dirname);
+        console.log('프로젝트 루트:', projectRoot);
         
         // 환경 변수 설정
         const env = {
@@ -375,19 +382,46 @@ async function startAutomationProcess(config) {
             BLOG_ADDRESS: config.tistory.blogAddress,
             RSS_FEED_URL: config.rss.url,
             OPENAI_API_KEY: config.ai.apiKey || '',
-            DEBUG_MODE: config.advanced.debug ? 'true' : 'false',
+            DEBUG_MODE: 'false',
             HEADLESS_MODE: config.advanced.headless ? 'true' : 'false',
             HTML_ENABLED: config.html.enabled ? 'true' : 'false',
-            AI_ENABLED: config.ai.enabled ? 'true' : 'false'
+            AI_ENABLED: config.ai.enabled ? 'true' : 'false',
+            // Windows 인코딩 설정
+            PYTHONIOENCODING: 'utf-8',
+            LANG: 'ko_KR.UTF-8',
+            // allowRepost 설정 (이전 기사 포함 여부)
+            ALLOW_REPOST: config.schedule.allowRepost ? 'true' : 'false'
         };
 
         // Node.js 실행 파일 경로 명시적으로 지정
-        const nodePath = process.execPath; // 현재 실행 중인 Node.js 경로 사용
+        const nodePath = 'node'; // 글로벌 node 명령어 사용 (shell 모드)
+        
+        console.log(`🔧 Node.js 경로: ${nodePath} (shell 모드 활성화)`);
+        console.log(`📁 스크립트 경로: ${scriptPath}`);
+        
+        // 스크립트 파일 존재 확인
+        if (!require('fs').existsSync(scriptPath)) {
+            const error = new Error(`자동화 스크립트를 찾을 수 없습니다: ${scriptPath}`);
+            console.error(error.message);
+            reject(error);
+            return;
+        }
         
         automationProcess = spawn(nodePath, [scriptPath], {
             env,
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            cwd: projectRoot, // 작업 디렉토리를 프로젝트 루트로 설정
+            shell: true // Windows 환경에서 node 명령어 인식을 위해 shell 모드 활성화
         });
+
+        console.log('프로세스 PID:', automationProcess.pid);
+
+        // 프로세스 시작 로그
+        console.log('자동화 프로세스 시작됨');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('log-message', '✅ 자동화 프로세스 시작됨');
+        }
+        appendToLogFile('✅ 자동화 프로세스 시작됨');
 
         automationProcess.stdout.on('data', (data) => {
             const message = data.toString().trim();
@@ -417,26 +451,43 @@ async function startAutomationProcess(config) {
             console.log(`자동화 프로세스 종료됨. 코드: ${code}`);
             automationProcess = null;
             
+            const statusMessage = code === 0 ? '자동화 정상 완료' : `자동화 오류 종료 (코드: ${code})`;
+            
             if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('log-message', statusMessage);
                 mainWindow.webContents.send('automation-status', { running: false });
             }
+            
+            appendToLogFile(statusMessage);
         });
 
         automationProcess.on('error', (error) => {
             console.error('프로세스 시작 오류:', error);
             automationProcess = null;
+            
+            const errorMessage = `프로세스 시작 실패: ${error.message}`;
+            
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('log-message', errorMessage);
+            }
+            
+            appendToLogFile(errorMessage);
             reject(error);
         });
 
-        // 성공적으로 시작됨
+        // 성공적으로 시작됨 - 시간 단축
         setTimeout(() => {
             if (automationProcess && !automationProcess.killed) {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('automation-status', { running: true });
+                    mainWindow.webContents.send('log-message', '✅ 자동화 시스템 활성화됨');
                 }
+                appendToLogFile('자동화 시스템 활성화됨');
                 resolve();
+            } else {
+                reject(new Error('자동화 프로세스가 시작되지 않았습니다.'));
             }
-        }, 1000);
+        }, 500); // 1초에서 0.5초로 단축
     });
 }
 

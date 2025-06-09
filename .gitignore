@@ -12,6 +12,8 @@ yarn-error.log*
 # 로그 파일
 *.log
 logs/
+automation.log
+processed_articles.json
 
 # 스크린샷 및 이미지 파일
 *.png
@@ -72,4 +74,8 @@ firefox-user-data/
 browser-data/
 
 # Puppeteer 관련
-.puppeteer/ 
+.puppeteer/
+
+# 민감한 정보가 포함된 파일들
+gui-config.json
+config/local.json 

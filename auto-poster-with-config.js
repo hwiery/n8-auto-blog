@@ -14,6 +14,9 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 
+// 향상된 콘텐츠 추출기 import
+const { extractArticleContent, createEnhancedHTMLTemplate } = require('./enhanced-content-extractor');
+
 // OpenAI API (선택적)
 let openai = null;
 if (config.openai.enabled && config.openai.apiKey) {
@@ -52,7 +55,7 @@ function createHTMLTemplate(article, content, template = 'rich') {
     <h3 style="color: #495057; margin-bottom: 10px;">📰 주요 내용</h3>
     ${article.description ? `<p style="font-style: italic; color: #6c757d; margin-bottom: 15px;">${article.description}</p>` : ''}
     <div style="line-height: 1.8;">
-      ${content ? content.split('\n').map(p => p.trim() ? `<p style="margin: 10px 0;">${p.trim()}</p>` : '').join('') : '<p>자세한 내용은 원문 링크를 참조해주세요.</p>'}
+      ${content ? content.split('\n').map(p => p.trim() ? `<p style="margin: 10px 0; color: #333;">${p.trim()}</p>` : '').join('') : '<p style="color: #333;">자세한 내용은 원문 링크를 참조해주세요.</p>'}
     </div>
   </div>
   
@@ -177,47 +180,101 @@ async function improveContentWithAI(article, content) {
 }
 
 /**
- * RSS 피드 파싱
+ * RSS 피드 파싱 (URL 매개변수 버전)
+ */
+async function parseRSSFeedWithUrl(feedUrl) {
+  console.log(`🔗 RSS 피드 요청: ${feedUrl}`);
+  try {
+    const fetch = require('node-fetch');
+    const response = await fetch(feedUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      timeout: config.rss.timeout
+    });
+    const data = await response.text();
+    console.log(`📊 RSS 응답 데이터 길이: ${data.length}자`);
+    const itemMatches = data.match(/<item[^>]*>[\s\S]*?<\/item>/g) || [];
+    console.log(`📊 찾은 item 태그 수: ${itemMatches.length}개`);
+    const articles = [];
+    itemMatches.forEach((item, index) => {
+      const title = (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) ||
+                    item.match(/<title>(.*?)<\/title>/))?.[1]?.trim();
+      const link = item.match(/<link>(.*?)<\/link>/)?.[1]?.trim();
+      const description = (item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) ||
+                         item.match(/<description>(.*?)<\/description>/))?.[1]?.trim() || '';
+      const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]?.trim() || new Date().toISOString();
+      if (title && link) {
+        const article = { title, link, description, pubDate, id: Buffer.from(link).toString('base64').substring(0, 16) };
+        articles.push(article);
+        console.log(`📰 기사 ${index + 1}: ${title.substring(0, 50)}...`);
+      }
+    });
+    console.log(`✅ RSS 파싱 완료: ${articles.length}개 기사 추출`);
+    return articles;
+  } catch (error) {
+    console.error('❌ RSS 요청 또는 파싱 오류:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * RSS 피드 파싱 (기존 버전 - 호환성 유지)
  */
 async function parseRSSFeed() {
-  return new Promise((resolve, reject) => {
-    const parsedUrl = url.parse(RSS_FEED_URL);
-    const client = parsedUrl.protocol === 'https:' ? https : http;
+  const feedUrl = RSS_FEED_URL || config.rss?.url;
+  if (!feedUrl) {
+    throw new Error('RSS 피드 URL이 설정되지 않았습니다.');
+  }
+  return parseRSSFeedWithUrl(feedUrl);
+}
 
-    client.get(RSS_FEED_URL, (res) => {
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => {
-        try {
-          const articles = [];
-          const itemMatches = data.match(/<item[^>]*>[\s\S]*?<\/item>/g) || [];
-
-          itemMatches.forEach(item => {
-            const title = (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || 
-                          item.match(/<title>(.*?)<\/title>/))?.[1]?.trim();
-            const link = item.match(/<link>(.*?)<\/link>/)?.[1]?.trim();
-            const description = (item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || 
-                               item.match(/<description>(.*?)<\/description>/))?.[1]?.trim();
-            const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]?.trim();
-
-            if (title && link) {
-              articles.push({
-                title,
-                link,
-                description: description || '',
-                pubDate: pubDate || new Date().toISOString(),
-                id: Buffer.from(link).toString('base64').substring(0, 16)
-              });
-            }
-          });
-
-          resolve(articles);
-        } catch (error) {
-          reject(error);
-        }
-      });
-    }).on('error', reject);
-  });
+/**
+ * 향상된 콘텐츠 처리 함수
+ */
+async function processArticleWithEnhancedContent(article) {
+  console.log(`🔍 처리 중: ${article.title}`);
+  
+  try {
+    // 1. 실제 기사 내용 추출
+    console.log('📄 실제 기사 내용을 추출합니다...');
+    const fullContent = await extractArticleContent(article.link);
+    
+    // 2. 향상된 HTML 템플릿 생성
+    console.log('🎨 향상된 HTML 템플릿을 생성합니다...');
+    const enhancedHTML = createEnhancedHTMLTemplate(article, fullContent);
+    
+    // 3. AI로 콘텐츠를 한국어 자연어 스타일로 개선
+    let finalContent = enhancedHTML;
+    if (openai && fullContent) {
+      console.log('🤖 AI로 콘텐츠를 한국어 자연어 스타일로 개선합니다...');
+      const aiImproved = await improveContentWithAI(article, fullContent);
+      finalContent = createEnhancedHTMLTemplate(article, aiImproved.content);
+    }
+    
+    console.log('✅ 콘텐츠 준비 완료');
+    console.log(`📊 제목: ${article.title}`);
+    console.log(`📊 내용 길이: ${finalContent.length}자`);
+    console.log(`📊 태그: ${config.content.defaultTags.join(', ')}`);
+    
+    return {
+      title: article.title,
+      content: finalContent,
+      tags: config.content.defaultTags,
+      originalContent: fullContent
+    };
+    
+  } catch (error) {
+    console.error(`❌ 기사 처리 실패: ${article.title}`, error.message);
+    
+    // 폴백: 기본 템플릿 사용
+    console.log('🔄 기본 템플릿으로 폴백합니다...');
+    const fallbackHTML = createHTMLTemplate(article, article.description, 'rich');
+    return {
+      title: article.title,
+      content: fallbackHTML,
+      tags: config.content.defaultTags,
+      originalContent: article.description
+    };
+  }
 }
 
 /**
@@ -229,10 +286,12 @@ async function postToTistory(title, content, tags) {
     const category = '뉴스'; // 기본 카테고리
     
     // Node.js 실행 파일 경로
-    const nodePath = process.execPath;
+    const nodePath = 'node'; // 글로벌 node 명령어 사용 (shell 모드)
     
     console.log(`📝 포스팅 시작: ${title}`);
     
+    // 프로젝트 루트 경로 설정 및 shell 모드 활성화로 HTML 콘텐츠 전달 문제 해결
+    const projectRoot = path.resolve(__dirname, '..');
     const posterProcess = spawn(nodePath, [
       posterScript,
       title,
@@ -246,7 +305,9 @@ async function postToTistory(title, content, tags) {
         TISTORY_PW: process.env.TISTORY_PW,
         BLOG_ADDRESS: process.env.BLOG_ADDRESS
       },
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: projectRoot,
+      shell: true
     });
     
     let stdout = '';
@@ -282,17 +343,51 @@ async function postToTistory(title, content, tags) {
  * 메인 자동화 함수
  */
 async function runAutomation() {
+  // allowRepost 설정 확인 (환경변수 또는 GUI 설정)
+  const allowRepostEnv = process.env.ALLOW_REPOST === 'true';
+  let allowRepost = allowRepostEnv;
+  try {
+    const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
+    if (fs.existsSync(guiConfigPath)) {
+      const guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+      if (typeof guiConfig.schedule?.allowRepost === 'boolean') {
+        allowRepost = guiConfig.schedule.allowRepost;
+        console.log(`🔧 GUI 설정 allowRepost 사용: ${allowRepost}`);
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ GUI 설정 파일 로드 오류:', error.message);
+  }
+  console.log(`🔧 allowRepost 최종 값: ${allowRepost}`);
   console.log('🚀 설정 기반 자동화 시작...');
+  console.log('🚀 runAutomation() 함수가 호출되었습니다.');
   console.log(`📊 설정 요약:`);
   console.log(`   - 스케줄: ${config.schedule.enabled ? config.schedule.type : '비활성화'}`);
   console.log(`   - HTML 모드: ${config.htmlMode.enabled ? config.htmlMode.template : '비활성화'}`);
   console.log(`   - OpenAI: ${config.openai.enabled ? '활성화' : '비활성화'}`);
   console.log(`   - 최대 기사 수: ${config.schedule.maxArticlesPerRun}개`);
+  
+  // 환경변수 및 RSS URL 상태 확인
+  console.log(`📡 RSS 설정 확인:`);
+  console.log(`   - RSS_FEED_URL (환경변수): ${RSS_FEED_URL || '없음'}`);
+  console.log(`   - config RSS URL: ${config.rss?.url || '없음'}`);
+  console.log(`   - 실제 사용할 URL: ${RSS_FEED_URL || config.rss?.url || '없음'}`);
+  
+  // 사용할 RSS URL 결정
+  const rssUrl = RSS_FEED_URL || config.rss?.url;
+  
+  if (!rssUrl) {
+    console.error('❌ RSS 피드 URL이 설정되지 않았습니다.');
+    console.error('❌ 환경변수나 config.js에서 RSS URL을 확인해주세요.');
+    throw new Error('RSS 피드 URL이 설정되지 않았습니다.');
+  }
+  
+  console.log(`✅ RSS URL 확인 완료: ${rssUrl}`);
 
   try {
     // RSS 피드 파싱
-    console.log('📡 RSS 피드 파싱 중...');
-    const articles = await parseRSSFeed();
+    console.log(`📡 RSS 피드 파싱 중... (${rssUrl})`);
+    const articles = await parseRSSFeedWithUrl(rssUrl);
     console.log(`📰 총 ${articles.length}개 기사 발견`);
 
     // 처리된 기사 목록 로드
@@ -304,22 +399,29 @@ async function runAutomation() {
       console.log('📝 새로운 처리 기록 파일 생성');
     }
 
-    // 새 기사 필터링
-    const newArticles = articles.filter(article => 
-      !processedArticles.includes(article.id)
-    ).slice(0, config.schedule.maxArticlesPerRun);
+    // 포스팅 대상 기사 필터링 (allowRepost 지원)
+    let targetArticles;
+    if (allowRepost) {
+      // 이전 처리 기록 무시: 모든 기사 중 최대 개수만큼 포스팅
+      targetArticles = articles.slice(0, config.schedule.maxArticlesPerRun);
+      console.log(`⚙️ allowRepost 활성: 과거 기사 포함, 총 ${targetArticles.length}개 기사 포스팅`);
+    } else {
+      // 새 기사만 포스팅
+      targetArticles = articles.filter(article =>
+        !processedArticles.includes(article.id)
+      ).slice(0, config.schedule.maxArticlesPerRun);
+      console.log(`🆕 새 기사 ${targetArticles.length}개 발견`);
+    }
 
-    console.log(`🆕 새 기사 ${newArticles.length}개 발견`);
-
-    if (newArticles.length === 0) {
-      console.log('✅ 처리할 새 기사가 없습니다.');
+    if (targetArticles.length === 0) {
+      console.log('✅ 처리할 기사(새 또는 allowRepost) 없음');
       return;
     }
 
-    // 각 기사 처리
-    for (let i = 0; i < newArticles.length; i++) {
-      const article = newArticles[i];
-      console.log(`\n🔍 처리 중 (${i + 1}/${newArticles.length}): ${article.title}`);
+    // 각 기사 처리 (targetArticles 사용)
+    for (let i = 0; i < targetArticles.length; i++) {
+      const article = targetArticles[i];
+      console.log(`\n🔍 처리 중 (${i + 1}/${targetArticles.length}): ${article.title}`);
 
       try {
         // 제목 정리
@@ -339,58 +441,57 @@ async function runAutomation() {
           });
         }
 
-        // 기사 내용 추출 (간단한 방법)
-        let content = article.description || '';
-        
-        // OpenAI로 콘텐츠 개선
-        const improved = await improveContentWithAI(
-          { ...article, title: cleanTitle }, 
-          content
-        );
+        // 향상된 콘텐츠 처리 사용
+        const processedContent = await processArticleWithEnhancedContent({ ...article, title: cleanTitle });
 
         // 내용 검증
-        if (improved.content.length < config.content.minContentLength) {
-          console.log(`⚠️ 내용이 너무 짧습니다 (${improved.content.length}자). 건너뜁니다.`);
+        if (processedContent.originalContent.length < config.content.minContentLength) {
+          console.log(`⚠️ 내용이 너무 짧습니다 (${processedContent.originalContent.length}자). 건너뜁니다.`);
           continue;
         }
 
-        // HTML 템플릿 적용
-        let postContent;
-        if (config.htmlMode.enabled && config.htmlMode.template !== 'plain') {
-          postContent = createHTMLTemplate(article, improved.content, config.htmlMode.template);
-        } else {
-          postContent = createHTMLTemplate(article, improved.content, 'plain');
-        }
+        // 최종 포스팅 콘텐츠
+        let postContent = processedContent.content;
 
         console.log('✅ 콘텐츠 준비 완료');
-        console.log(`📊 제목: ${improved.title}`);
+        console.log(`📊 제목: ${processedContent.title}`);
         console.log(`📊 내용 길이: ${postContent.length}자`);
-        console.log(`📊 태그: ${improved.tags.join(', ')}`);
+        console.log(`📊 태그: ${processedContent.tags.join(', ')}`);
 
-        // 실제 포스팅은 기존 시스템 사용
-        if (config.debug && config.debug.enabled) {
+        // 환경변수 우선 디버그 모드 체크
+        const debugMode = process.env.DEBUG_MODE === 'true' || (config.debug && config.debug.enabled);
+        
+        if (debugMode) {
           console.log('🔍 디버그 모드: 실제 포스팅하지 않음');
           console.log('📝 포스팅 내용 미리보기:');
           console.log(postContent.substring(0, 300) + '...');
           console.log('✅ 디버그 모드 완료 - 실제 포스팅하지 않았습니다.');
         } else {
-          // ✅ Puppeteer 문제 완전 해결! 실제 포스팅 실행
-          console.log('📝 실제 포스팅 실행...');
+          // ✅ 실제 포스팅 실행!
+          console.log('📝 실제 티스토리 포스팅을 시작합니다...');
+          console.log(`📝 포스팅 제목: ${processedContent.title}`);
+          console.log(`📝 포스팅 길이: ${postContent.length}자`);
+          console.log(`📝 태그: ${processedContent.tags.join(', ')}`);
+          
           try {
-            await postToTistory(improved.title, postContent, improved.tags.join(','));
-            console.log('🎉 포스팅 성공!');
+            await postToTistory(processedContent.title, postContent, processedContent.tags.join(','));
+            console.log('🎉 티스토리 포스팅 성공!');
+            console.log(`🎉 "${processedContent.title}" 포스팅이 완료되었습니다.`);
           } catch (error) {
             console.log('❌ 포스팅 실패:', error.message);
+            console.log('❌ 다음 기사로 계속 진행합니다...');
             // 포스팅 실패해도 기록은 남기지 않음 (재시도 가능)
             continue; // 다음 기사로 계속
           }
         }
 
-        // 처리 완료 기록
-        processedArticles.push(article.id);
+        // 처리 완료 기록 (allowRepost env 비활성화 시에만 기록)
+        if (!allowRepost) {
+          processedArticles.push(article.id);
+        }
         
         // 포스팅 간격 대기
-        if (i < newArticles.length - 1) {
+        if (i < targetArticles.length - 1) {
           console.log(`⏰ ${config.schedule.intervalBetweenPosts / 1000}초 대기...`);
           await new Promise(resolve => setTimeout(resolve, config.schedule.intervalBetweenPosts));
         }
@@ -402,7 +503,7 @@ async function runAutomation() {
 
     // 처리 기록 저장
     fs.writeFileSync(PROCESSED_FILE, JSON.stringify(processedArticles, null, 2));
-    console.log(`\n🎉 자동화 완료! ${newArticles.length}개 기사 처리됨`);
+    console.log(`\n🎉 자동화 완료! ${targetArticles.length}개 기사 처리됨`);
 
   } catch (error) {
     console.error('❌ 자동화 실행 오류:', error);
@@ -459,9 +560,49 @@ function setupScheduler() {
 if (require.main === module) {
   console.log('🚀 티스토리 자동화 시스템 시작...');
   
-  if (config.schedule.type === 'manual') {
-    console.log('📝 수동 모드로 즉시 실행합니다.');
-    runAutomation();
+  // 환경변수 우선 체크 (GUI에서 호출된 경우)
+  const isCalledFromGUI = process.env.TISTORY_ID && process.env.RSS_FEED_URL;
+  
+  console.log('📊 상세 환경변수 확인:');
+  console.log(`   - TISTORY_ID: ${process.env.TISTORY_ID ? '설정됨' : '없음'}`);
+  console.log(`   - TISTORY_PW: ${process.env.TISTORY_PW ? '설정됨' : '없음'}`);
+  console.log(`   - BLOG_ADDRESS: ${process.env.BLOG_ADDRESS || '없음'}`);
+  console.log(`   - RSS_FEED_URL: ${process.env.RSS_FEED_URL || '없음'}`);
+  console.log(`   - DEBUG_MODE: ${process.env.DEBUG_MODE || '없음'}`);
+  console.log(`   - HTML_ENABLED: ${process.env.HTML_ENABLED || '없음'}`);
+  console.log(`   - GUI 호출 여부: ${isCalledFromGUI ? '예' : '아니오'}`);
+  
+  if (isCalledFromGUI || config.schedule.type === 'manual') {
+    console.log('📝 즉시 실행 모드로 자동화를 시작합니다.');
+    
+    // 환경변수 기반 디버그 모드 설정
+    const debugMode = process.env.DEBUG_MODE === 'true';
+    console.log(`🔍 디버그 모드: ${debugMode ? '활성화' : '비활성화'}`);
+    
+    // RSS URL 최종 확인
+    const finalRssUrl = RSS_FEED_URL || config.rss?.url;
+    console.log(`🔗 최종 RSS URL: ${finalRssUrl}`);
+    
+    if (!finalRssUrl) {
+      console.error('❌ RSS URL이 설정되지 않았습니다!');
+      console.error('❌ 환경변수 RSS_FEED_URL 또는 config.rss.url을 확인해주세요.');
+      process.exit(1);
+    }
+    
+    // 실제 자동화 실행
+    console.log('⏳ RSS 피드 파싱 및 포스팅 작업을 시작합니다...');
+    console.log('⏳ runAutomation() 함수를 호출합니다...');
+    
+    runAutomation().then(() => {
+      console.log('🎉 자동화 실행 완료!');
+      console.log('📝 모든 작업이 성공적으로 완료되었습니다.');
+      process.exit(0);
+    }).catch(error => {
+      console.error('❌ 자동화 실행 실패:', error.message);
+      console.error('❌ 스택 트레이스:', error.stack);
+      console.error('📝 자동화 작업 중 오류가 발생했습니다.');
+      process.exit(1);
+    });
   } else {
     setupScheduler();
     console.log('⏰ 스케줄러가 실행 중입니다. Ctrl+C로 종료하세요.');
