@@ -1,0 +1,6 @@
+owner: your-username
+repo: tistory-automation-gui
+provider: github
+updaterCacheDirName: tistory-automation-gui-updater
+publisherName:
+  - Tistory Automation Team

@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+require('dotenv').config();
 
 /**
  * 티스토리 자동 포스팅 스크립트
@@ -522,6 +523,23 @@ async function writePost(page) {
 
     // 본문 내용 입력
     await inputContent(page, postContentHTML);
+    
+    // 내용 입력 검증
+    const contentVerified = await verifyContentInput(page, postContentHTML);
+    if (!contentVerified) {
+        console.log('⚠️ 내용 입력 검증 실패. 재시도합니다...');
+        
+        // 한 번 더 시도
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await inputContent(page, postContentHTML);
+        
+        const secondVerification = await verifyContentInput(page, postContentHTML);
+        if (!secondVerification) {
+            throw new Error('본문 내용 입력에 실패했습니다. 내용이 제대로 입력되지 않았습니다.');
+        }
+    }
+    
+    console.log('✅ 본문 내용 입력 및 검증 완료');
 
     // 카테고리 설정 (선택사항)
     if (postCategory) {
@@ -567,27 +585,76 @@ async function writePost(page) {
 async function inputContent(page, content) {
     console.log('📝 본문 내용 입력 시도...');
     
-    // CodeMirror 에디터 시도
+    // 내용 길이 확인
+    console.log(`📊 입력할 내용 길이: ${content.length}자`);
+    console.log(`📝 내용 미리보기: ${content.substring(0, 100)}...`);
+    
+    // 1. CodeMirror 에디터 시도 (HTML 모드에서 주로 사용)
     try {
         await page.waitForSelector('.CodeMirror', { timeout: 5000 });
+        console.log('🔍 CodeMirror 에디터 발견');
+        
+        // 여러 방법으로 CodeMirror에 내용 입력 시도
         const success = await page.evaluate((content) => {
-            const editor = document.querySelector('.CodeMirror');
-            if (editor && editor.CodeMirror) {
-                editor.CodeMirror.setValue(content);
-                return true;
+            try {
+                // 방법 1: CodeMirror 인스턴스 직접 접근
+                const editor = document.querySelector('.CodeMirror');
+                if (editor && editor.CodeMirror) {
+                    console.log('CodeMirror 인스턴스 발견, 내용 설정 중...');
+                    editor.CodeMirror.setValue(content);
+                    editor.CodeMirror.refresh();
+                    return true;
+                }
+                
+                // 방법 2: 모든 CodeMirror 인스턴스 확인
+                if (window.CodeMirror && window.CodeMirror.instances) {
+                    for (let instance of window.CodeMirror.instances) {
+                        if (instance) {
+                            console.log('CodeMirror 인스턴스 배열에서 발견');
+                            instance.setValue(content);
+                            instance.refresh();
+                            return true;
+                        }
+                    }
+                }
+                
+                // 방법 3: 전역 CodeMirror 객체 확인
+                if (window.CodeMirror && window.CodeMirror.fromTextArea) {
+                    const textareas = document.querySelectorAll('textarea');
+                    for (let textarea of textareas) {
+                        if (textarea.nextSibling && textarea.nextSibling.classList && 
+                            textarea.nextSibling.classList.contains('CodeMirror')) {
+                            console.log('textarea 연결된 CodeMirror 발견');
+                            const cm = textarea.nextSibling.CodeMirror;
+                            if (cm) {
+                                cm.setValue(content);
+                                cm.refresh();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                
+                return false;
+            } catch (error) {
+                console.error('CodeMirror 설정 중 오류:', error);
+                return false;
             }
-            return false;
         }, content);
         
         if (success) {
             console.log('✅ CodeMirror 에디터에 내용 입력 완료');
+            // 입력 후 잠시 대기
+            await new Promise(resolve => setTimeout(resolve, 1000));
             return;
+        } else {
+            console.log('⚠️ CodeMirror 내용 설정 실패');
         }
     } catch (error) {
-        console.log('⚠️ CodeMirror 에디터를 찾을 수 없습니다.');
+        console.log('⚠️ CodeMirror 에디터를 찾을 수 없습니다:', error.message);
     }
 
-    // textarea 시도
+    // 2. textarea 직접 입력 시도
     const textareaSelectors = [
         'textarea[name="content"]',
         'textarea[id*="content"]',
@@ -603,20 +670,63 @@ async function inputContent(page, content) {
             const textarea = await page.$(selector);
             if (textarea) {
                 console.log(`✅ textarea 발견: ${selector}`);
-                await textarea.click();
-                await textarea.evaluate(el => el.value = '');
-                await textarea.type(content, { delay: 10 });
+                
+                // textarea에 강제로 내용 입력
+                await page.evaluate((selector, content) => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        element.value = content;
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }, selector, content);
+                
                 console.log('✅ textarea에 내용 입력 완료');
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 return;
             }
         } catch (error) {
-            // 계속 시도
+            console.log(`⚠️ textarea 시도 실패 (${selector}):`, error.message);
         }
     }
 
-    // iframe 내부의 에디터 시도
+    // 3. contenteditable 요소 시도
+    const editableSelectors = [
+        '[contenteditable="true"]',
+        '.editor-content',
+        '.content-editor',
+        '#editor',
+        '.post-content'
+    ];
+
+    for (const selector of editableSelectors) {
+        try {
+            const element = await page.$(selector);
+            if (element) {
+                console.log(`✅ contenteditable 요소 발견: ${selector}`);
+                
+                await page.evaluate((selector, content) => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        element.innerHTML = content;
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }, selector, content);
+                
+                console.log('✅ contenteditable 요소에 내용 입력 완료');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return;
+            }
+        } catch (error) {
+            console.log(`⚠️ contenteditable 시도 실패 (${selector}):`, error.message);
+        }
+    }
+
+    // 4. iframe 내부의 에디터 시도
     try {
         const frames = await page.frames();
+        console.log(`🔍 ${frames.length}개의 iframe 확인 중...`);
+        
         for (const frame of frames) {
             try {
                 const body = await frame.$('body[contenteditable="true"]');
@@ -624,8 +734,10 @@ async function inputContent(page, content) {
                     console.log('✅ iframe 내 contenteditable body 발견');
                     await frame.evaluate((content) => {
                         document.body.innerHTML = content;
+                        document.body.dispatchEvent(new Event('input', { bubbles: true }));
                     }, content);
                     console.log('✅ iframe 에디터에 내용 입력 완료');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     return;
                 }
             } catch (error) {
@@ -633,10 +745,102 @@ async function inputContent(page, content) {
             }
         }
     } catch (error) {
-        // 무시
+        console.log('⚠️ iframe 확인 중 오류:', error.message);
     }
 
-    console.log('⚠️ 본문 입력 필드를 찾을 수 없습니다. 기본 모드에서 계속 진행합니다.');
+    // 5. 마지막 시도: 클립보드 사용
+    try {
+        console.log('📋 클립보드를 사용한 내용 입력 시도...');
+        
+        // 클립보드에 내용 복사
+        await page.evaluate((content) => {
+            navigator.clipboard.writeText(content);
+        }, content);
+        
+        // 에디터 영역 클릭 후 붙여넣기
+        const possibleEditors = await page.$$('textarea, [contenteditable="true"], .CodeMirror');
+        if (possibleEditors.length > 0) {
+            await possibleEditors[0].click();
+            await page.keyboard.down('Meta'); // macOS의 Cmd 키
+            await page.keyboard.press('KeyV');
+            await page.keyboard.up('Meta');
+            console.log('✅ 클립보드를 통한 내용 입력 완료');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return;
+        }
+    } catch (error) {
+        console.log('⚠️ 클립보드 입력 실패:', error.message);
+    }
+
+    console.log('❌ 모든 방법으로 본문 입력에 실패했습니다.');
+    throw new Error('본문 내용을 입력할 수 없습니다. 에디터를 찾을 수 없습니다.');
+}
+
+/**
+ * 입력된 내용 검증 함수
+ */
+async function verifyContentInput(page, expectedContent) {
+    console.log('🔍 입력된 내용 검증 중...');
+    
+    try {
+        // CodeMirror에서 내용 확인
+        const codeMirrorContent = await page.evaluate(() => {
+            const editor = document.querySelector('.CodeMirror');
+            if (editor && editor.CodeMirror) {
+                return editor.CodeMirror.getValue();
+            }
+            return null;
+        });
+        
+        if (codeMirrorContent) {
+            console.log(`📊 CodeMirror 내용 길이: ${codeMirrorContent.length}자`);
+            if (codeMirrorContent.length > 100) {
+                console.log('✅ CodeMirror에 충분한 내용이 입력되었습니다.');
+                return true;
+            }
+        }
+        
+        // textarea에서 내용 확인
+        const textareaContent = await page.evaluate(() => {
+            const textareas = document.querySelectorAll('textarea');
+            for (let textarea of textareas) {
+                if (textarea.value && textarea.value.length > 100) {
+                    return textarea.value;
+                }
+            }
+            return null;
+        });
+        
+        if (textareaContent) {
+            console.log(`📊 textarea 내용 길이: ${textareaContent.length}자`);
+            console.log('✅ textarea에 충분한 내용이 입력되었습니다.');
+            return true;
+        }
+        
+        // contenteditable에서 내용 확인
+        const editableContent = await page.evaluate(() => {
+            const editables = document.querySelectorAll('[contenteditable="true"]');
+            for (let editable of editables) {
+                if (editable.innerHTML && editable.innerHTML.length > 100) {
+                    return editable.innerHTML;
+                }
+            }
+            return null;
+        });
+        
+        if (editableContent) {
+            console.log(`📊 contenteditable 내용 길이: ${editableContent.length}자`);
+            console.log('✅ contenteditable에 충분한 내용이 입력되었습니다.');
+            return true;
+        }
+        
+        console.log('⚠️ 입력된 내용이 충분하지 않습니다.');
+        return false;
+        
+    } catch (error) {
+        console.log('⚠️ 내용 검증 중 오류:', error.message);
+        return false;
+    }
 }
 
 /**
@@ -869,6 +1073,23 @@ async function switchToHTMLMode(page) {
     console.log('🔄 HTML 모드로 전환 시도...');
     
     try {
+        // 현재 모드 확인
+        const currentMode = await page.evaluate(() => {
+            // HTML 모드 표시 확인
+            const htmlIndicator = document.querySelector('#editor-mode-layer-btn-open');
+            if (htmlIndicator) {
+                return htmlIndicator.textContent.trim();
+            }
+            return 'unknown';
+        });
+        
+        console.log(`📊 현재 에디터 모드: ${currentMode}`);
+        
+        if (currentMode.includes('HTML') || currentMode.includes('html')) {
+            console.log('✅ 이미 HTML 모드입니다.');
+            return;
+        }
+        
         // 기본모드 버튼 클릭 (드롭다운 열기)
         const modeButton = await page.$('#editor-mode-layer-btn-open');
         if (modeButton) {
@@ -887,13 +1108,64 @@ async function switchToHTMLMode(page) {
                 console.log('🔍 HTML 모드 전환 모달 확인 중...');
                 await handleHTMLModeModal(page);
                 
-                await new Promise(resolve => setTimeout(resolve, 2000)); // 모드 전환 완료 대기
-                console.log('✅ HTML 모드로 전환 완료');
+                await new Promise(resolve => setTimeout(resolve, 5000)); // 모드 전환 완료 대기 (더 길게)
+                
+                // 전환 완료 확인
+                const newMode = await page.evaluate(() => {
+                    const htmlIndicator = document.querySelector('#editor-mode-layer-btn-open');
+                    return htmlIndicator ? htmlIndicator.textContent.trim() : 'unknown';
+                });
+                
+                if (newMode.includes('HTML') || newMode.includes('html')) {
+                    console.log('✅ HTML 모드로 전환 완료');
+                } else {
+                    console.log(`⚠️ HTML 모드 전환 실패. 현재 모드: ${newMode}`);
+                    
+                    // 강제로 HTML 모드 전환 시도
+                    console.log('🔄 강제 HTML 모드 전환 시도...');
+                    await page.evaluate(() => {
+                        // 직접 HTML 모드 설정 시도
+                        const htmlButton = document.querySelector('#editor-mode-html');
+                        if (htmlButton) {
+                            htmlButton.click();
+                        }
+                        
+                        // 또는 직접 에디터 모드 변경
+                        if (window.Editor && window.Editor.setMode) {
+                            window.Editor.setMode('html');
+                        }
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
             } else {
                 console.log('⚠️ HTML 모드 옵션을 찾을 수 없습니다.');
             }
         } else {
-            console.log('⚠️ 에디터 모드 버튼을 찾을 수 없습니다. 이미 HTML 모드일 수 있습니다.');
+            console.log('⚠️ 에디터 모드 버튼을 찾을 수 없습니다.');
+            
+            // 대안: 다른 방법으로 HTML 모드 전환 시도
+            const alternativeSelectors = [
+                'button[title*="HTML"]',
+                'a[href*="html"]',
+                '.html-mode',
+                '.mode-html',
+                '[data-mode="html"]'
+            ];
+            
+            for (const selector of alternativeSelectors) {
+                try {
+                    const element = await page.$(selector);
+                    if (element) {
+                        console.log(`✅ 대안 HTML 모드 버튼 발견: ${selector}`);
+                        await element.click();
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        break;
+                    }
+                } catch (error) {
+                    // 계속 시도
+                }
+            }
         }
     } catch (error) {
         console.log('⚠️ HTML 모드 전환 실패:', error.message);
@@ -907,6 +1179,9 @@ async function switchToHTMLMode(page) {
 async function handleHTMLModeModal(page) {
     console.log('🔍 HTML 모드 전환 모달 확인 중...');
     
+    // 잠시 대기 후 모달 확인
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     const modalSelectors = [
         '.mce-window',
         '.mce-container',
@@ -915,7 +1190,9 @@ async function handleHTMLModeModal(page) {
         '.popup',
         '.layer',
         '[role="dialog"]',
-        '.mce-window-body'
+        '.mce-window-body',
+        '.ui-dialog',
+        '.modal-dialog'
     ];
 
     const confirmButtonSelectors = [
@@ -929,13 +1206,15 @@ async function handleHTMLModeModal(page) {
         '.confirm-btn',
         'button[type="submit"]',
         '.mce-btn:contains("확인")',
-        '.mce-btn:contains("OK")'
+        '.mce-btn:contains("OK")',
+        '.ui-button-text:contains("확인")',
+        '.ui-button:contains("확인")'
     ];
 
     // 예측 가능한 모달이므로 충분한 시간 대기
     for (const selector of modalSelectors) {
         try {
-            await page.waitForSelector(selector, { timeout: 5000 });
+            await page.waitForSelector(selector, { timeout: 3000 });
             const modal = await page.$(selector);
             if (modal) {
                 const isVisible = await page.evaluate(el => {

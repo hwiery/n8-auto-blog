@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+require('dotenv').config();
 
 /**
  * 환경변수 설정 및 검증

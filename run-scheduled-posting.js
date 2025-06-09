@@ -2,6 +2,7 @@
  * 스케줄된 콘텐츠 자동 포스팅 실행 스크립트
  */
 
+require('dotenv').config();
 const { spawn } = require('child_process');
 const { extractNotebookLMContent, formatContentAsHTML } = require('./content-extractor');
 

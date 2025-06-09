@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 네트워크 접근 권한 -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  
+  <!-- 외부 네트워크 서버 접근 권한 -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+  
+  <!-- 파일 시스템 읽기/쓰기 권한 -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  
+  <!-- 임시 예외 권한 (개발/테스트용) -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  
+  <!-- 동적 라이브러리 로딩 권한 -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  
+  <!-- 디버깅 허용 권한 -->
+  <key>com.apple.security.cs.debugger</key>
+  <true/>
+  
+  <!-- 카메라 접근 권한 (Puppeteer 등에서 필요할 수 있음) -->
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  
+  <!-- 마이크 접근 권한 -->
+  <key>com.apple.security.device.microphone</key>
+  <true/>
+  
+  <!-- 화면 녹화 권한 -->
+  <key>com.apple.security.device.screen-recording</key>
+  <true/>
+  
+  <!-- 접근성 권한 -->
+  <key>com.apple.security.device.accessibility</key>
+  <true/>
+  
+  <!-- 사용자 홈 디렉토리 읽기 권한 -->
+  <key>com.apple.security.files.user-selected.read-only</key>
+  <true/>
+  
+  <!-- 다운로드 폴더 접근 권한 -->
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+</dict>
+</plist> 

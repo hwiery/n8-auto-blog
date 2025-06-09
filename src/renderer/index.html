@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>티스토리 자동화 관리자</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 사이드바 -->
+        <div class="sidebar">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <h1>티스토리 자동화</h1>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#dashboard" class="nav-item active" data-tab="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>대시보드</span>
+                </a>
+                <a href="#schedule" class="nav-item" data-tab="schedule">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>스케줄 & 날짜</span>
+                </a>
+                <a href="#content" class="nav-item" data-tab="content">
+                    <i class="fas fa-rss"></i>
+                    <span>RSS & 콘텐츠</span>
+                </a>
+                <a href="#html" class="nav-item" data-tab="html">
+                    <i class="fas fa-code"></i>
+                    <span>HTML 설정</span>
+                </a>
+                <a href="#ai" class="nav-item" data-tab="ai">
+                    <i class="fas fa-brain"></i>
+                    <span>AI 설정</span>
+                </a>
+                <a href="#environment" class="nav-item" data-tab="environment">
+                    <i class="fas fa-cog"></i>
+                    <span>환경설정</span>
+                </a>
+                <a href="#logs" class="nav-item" data-tab="logs">
+                    <i class="fas fa-file-alt"></i>
+                    <span>로그</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- 메인 컨텐츠 -->
+        <div class="main-content">
+            <!-- 대시보드 탭 -->
+            <div id="dashboard" class="tab-content active">
+                <div class="header">
+                    <h2><i class="fas fa-tachometer-alt"></i> 대시보드</h2>
+                    <div class="status-indicator">
+                        <span id="automation-status" class="status-stopped">중지됨</span>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h3><i class="fas fa-play-circle"></i> 자동화 제어</h3>
+                        <div class="control-buttons">
+                            <button id="start-btn" class="btn btn-success">
+                                <i class="fas fa-play"></i> 시작
+                            </button>
+                            <button id="stop-btn" class="btn btn-danger" disabled>
+                                <i class="fas fa-stop"></i> 중지
+                            </button>
+                            <button id="test-btn" class="btn btn-info">
+                                <i class="fas fa-vial"></i> 테스트
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-info-circle"></i> 현재 설정 요약</h3>
+                        <div class="setting-summary">
+                            <div class="setting-item">
+                                <span class="label">스케줄 모드:</span>
+                                <span id="current-schedule-mode">-</span>
+                            </div>
+                            <div class="setting-item">
+                                <span class="label">실행 날짜:</span>
+                                <span id="current-date-setting">-</span>
+                            </div>
+                            <div class="setting-item">
+                                <span class="label">RSS 소스:</span>
+                                <span id="current-rss-source">-</span>
+                            </div>
+                            <div class="setting-item">
+                                <span class="label">HTML 모드:</span>
+                                <span id="current-html-mode">-</span>
+                            </div>
+                            <div class="setting-item">
+                                <span class="label">AI 기능:</span>
+                                <span id="current-ai-status">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card full-width">
+                        <h3><i class="fas fa-terminal"></i> 실시간 로그</h3>
+                        <div id="real-time-log" class="log-viewer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 스케줄 & 날짜 설정 탭 -->
+            <div id="schedule" class="tab-content">
+                <div class="header">
+                    <h2><i class="fas fa-calendar-alt"></i> 스케줄 & 날짜 설정</h2>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="card">
+                        <h3><i class="fas fa-clock"></i> 실행 모드</h3>
+                        
+                        <div class="form-group">
+                            <label for="execution-mode">실행 모드 선택</label>
+                            <select id="execution-mode" class="form-select">
+                                <option value="manual">수동 실행</option>
+                                <option value="auto">자동 실행</option>
+                                <option value="scheduled">일시 지정 실행</option>
+                            </select>
+                        </div>
+
+                        <div id="auto-schedule-options" class="schedule-options" style="display: none;">
+                            <div class="form-group">
+                                <label for="auto-schedule-type">자동 스케줄 타입</label>
+                                <select id="auto-schedule-type" class="form-select">
+                                    <option value="hourly">매시간 정각</option>
+                                    <option value="daily_9am">매일 오전 9시</option>
+                                    <option value="every_30min">30분마다</option>
+                                    <option value="three_times_daily">하루 3번 (9시, 13시, 18시)</option>
+                                    <option value="weekdays_9am">평일 오전 9시</option>
+                                    <option value="custom">사용자 정의</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="custom-cron-group" style="display: none;">
+                                <label for="custom-cron">Cron 표현식</label>
+                                <input type="text" id="custom-cron" placeholder="0 9,13,18 * * *" class="form-input">
+                                <small>예: 0 9,13,18 * * * (매일 9시, 13시, 18시)</small>
+                            </div>
+                        </div>
+
+                        <div id="scheduled-options" class="schedule-options" style="display: none;">
+                            <div class="form-group">
+                                <label for="scheduled-date">실행 날짜</label>
+                                <input type="date" id="scheduled-date" class="form-input">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="scheduled-time">실행 시간</label>
+                                <input type="time" id="scheduled-time" class="form-input" value="09:00">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="repeat-type">반복 설정</label>
+                                <select id="repeat-type" class="form-select">
+                                    <option value="once">한 번만 실행</option>
+                                    <option value="daily">매일 반복</option>
+                                    <option value="weekly">매주 반복</option>
+                                    <option value="monthly">매월 반복</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-cogs"></i> 실행 설정</h3>
+                        
+                        <div class="form-group">
+                            <label for="max-articles">한 번에 처리할 최대 기사 수</label>
+                            <input type="number" id="max-articles" min="1" max="50" value="3" class="form-input">
+                            <small>권장: 3-10개</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="post-interval">포스팅 간격 (초)</label>
+                            <input type="number" id="post-interval" min="5" max="300" value="30" class="form-input">
+                            <small>티스토리 정책상 최소 5초 권장</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="enable-scheduler">스케줄러 활성화</label>
+                            <input type="checkbox" id="enable-scheduler" class="toggle" checked>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="save-schedule" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 스케줄 설정 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- RSS & 콘텐츠 설정 탭 -->
+            <div id="content" class="tab-content">
+                <div class="header">
+                    <h2><i class="fas fa-rss"></i> RSS 피드 & 콘텐츠 설정</h2>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="card">
+                        <h3><i class="fas fa-globe"></i> RSS 피드 소스</h3>
+                        
+                        <div class="form-group">
+                            <label for="rss-source-type">RSS 소스 타입</label>
+                            <select id="rss-source-type" class="form-select">
+                                <option value="google-news">Google News (한국)</option>
+                                <option value="google-news-custom">Google News (카테고리별)</option>
+                                <option value="custom">사용자 정의 RSS</option>
+                            </select>
+                        </div>
+
+                        <div id="google-news-category" class="form-group" style="display: none;">
+                            <label for="news-category">뉴스 카테고리</label>
+                            <select id="news-category" class="form-select">
+                                <option value="h">헤드라인</option>
+                                <option value="n">국내</option>
+                                <option value="w">국제</option>
+                                <option value="b">경제</option>
+                                <option value="t">과학/기술</option>
+                                <option value="e">연예</option>
+                                <option value="s">스포츠</option>
+                                <option value="m">건강</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="rss-url">RSS 피드 URL</label>
+                            <input type="url" id="rss-url" class="form-input" 
+                                   placeholder="https://news.google.com/rss?topic=h&gl=KR&ceid=KR:ko">
+                            <small>Google News 또는 다른 RSS 피드 URL을 입력하세요</small>
+                        </div>
+
+                        <div class="form-group">
+                            <button id="test-rss" class="btn btn-info">
+                                <i class="fas fa-check"></i> RSS 피드 테스트
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-filter"></i> 콘텐츠 필터링</h3>
+                        
+                        <div class="form-group">
+                            <label for="keyword-filter">키워드 필터 (포함)</label>
+                            <input type="text" id="keyword-filter" class="form-input" 
+                                   placeholder="예: 기술, 혁신, 스타트업 (쉼표로 구분)">
+                            <small>해당 키워드가 포함된 기사만 선택</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="exclude-keywords">제외 키워드</label>
+                            <input type="text" id="exclude-keywords" class="form-input" 
+                                   placeholder="예: 광고, 홍보 (쉼표로 구분)">
+                            <small>해당 키워드가 포함된 기사 제외</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="remove-media-names">언론사명 제거</label>
+                            <input type="checkbox" id="remove-media-names" class="toggle" checked>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="min-content-length">최소 글자 수</label>
+                            <input type="number" id="min-content-length" min="50" max="5000" value="100" class="form-input">
+                            <small>이보다 짧은 기사는 제외</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="save-content" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 콘텐츠 설정 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- HTML 설정 탭 -->
+            <div id="html" class="tab-content">
+                <div class="header">
+                    <h2><i class="fas fa-code"></i> HTML 사용 설정</h2>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="card">
+                        <h3><i class="fas fa-toggle-on"></i> HTML 모드 활성화</h3>
+                        
+                        <div class="form-group">
+                            <label for="html-enabled">HTML 모드 사용</label>
+                            <input type="checkbox" id="html-enabled" class="toggle" checked>
+                            <small>체크 해제 시 순수 텍스트로만 포스팅됩니다</small>
+                        </div>
+
+                        <div id="html-options" class="html-options">
+                            <div class="form-group">
+                                <label for="html-template">HTML 템플릿</label>
+                                <select id="html-template" class="form-select">
+                                    <option value="rich">Rich - 풍부한 스타일링</option>
+                                    <option value="simple">Simple - 간단한 스타일링</option>
+                                    <option value="minimal">Minimal - 최소한의 스타일</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="include-images">이미지 포함</label>
+                                <input type="checkbox" id="include-images" class="toggle">
+                                <small>기사 내 이미지를 포함하여 포스팅</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="auto-paragraph">자동 문단 나누기</label>
+                                <input type="checkbox" id="auto-paragraph" class="toggle" checked>
+                                <small>긴 텍스트를 자동으로 문단별로 나누기</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="add-source-link">원문 링크 추가</label>
+                                <input type="checkbox" id="add-source-link" class="toggle" checked>
+                                <small>포스트 하단에 원문 링크 자동 추가</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-eye"></i> 템플릿 미리보기</h3>
+                        <div id="template-preview" class="template-preview">
+                            <p>HTML 모드를 활성화하고 템플릿을 선택하면 미리보기가 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="save-html" class="btn btn-primary">
+                        <i class="fas fa-save"></i> HTML 설정 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- AI 설정 탭 -->
+            <div id="ai" class="tab-content">
+                <div class="header">
+                    <h2><i class="fas fa-brain"></i> OpenAI API 사용 설정</h2>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="card">
+                        <h3><i class="fas fa-toggle-on"></i> AI 기능 활성화</h3>
+                        
+                        <div class="form-group">
+                            <label for="ai-enabled">OpenAI API 사용</label>
+                            <input type="checkbox" id="ai-enabled" class="toggle">
+                            <small>체크 해제 시 AI 기능 없이 원본 그대로 포스팅됩니다</small>
+                        </div>
+
+                        <div id="ai-options" class="ai-options" style="display: none;">
+                            <div class="form-group">
+                                <label for="openai-api-key">OpenAI API 키</label>
+                                <input type="password" id="openai-api-key" class="form-input" 
+                                       placeholder="sk-...로 시작하는 API 키 입력">
+                                <small>OpenAI 웹사이트에서 발급받은 API 키를 입력하세요</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="ai-model">사용할 AI 모델</label>
+                                <select id="ai-model" class="form-select">
+                                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo (빠름, 저렴)</option>
+                                    <option value="gpt-4">GPT-4 (고품질, 비쌈)</option>
+                                    <option value="gpt-4-turbo">GPT-4 Turbo (균형)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <button id="test-ai" class="btn btn-info">
+                                    <i class="fas fa-check"></i> API 키 테스트
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-magic"></i> AI 기능 선택</h3>
+                        
+                        <div id="ai-features" class="ai-features" style="display: none;">
+                            <div class="form-group">
+                                <label for="improve-title">제목 개선</label>
+                                <input type="checkbox" id="improve-title" class="toggle">
+                                <small>AI가 더 흥미로운 제목으로 변경</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="improve-content">내용 개선 및 요약</label>
+                                <input type="checkbox" id="improve-content" class="toggle">
+                                <small>AI가 읽기 쉽게 내용을 정리하고 요약</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="generate-tags">태그 자동 생성</label>
+                                <input type="checkbox" id="generate-tags" class="toggle">
+                                <small>기사 내용에 맞는 태그 자동 생성</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="add-summary">요약문 추가</label>
+                                <input type="checkbox" id="add-summary" class="toggle">
+                                <small>포스트 상단에 핵심 요약문 추가</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="translate-content">번역 기능</label>
+                                <input type="checkbox" id="translate-content" class="toggle">
+                                <small>영어 기사를 한국어로 자동 번역</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="save-ai" class="btn btn-primary">
+                        <i class="fas fa-save"></i> AI 설정 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- 환경설정 탭 -->
+            <div id="environment" class="tab-content">
+                <div class="header">
+                    <h2><i class="fas fa-cog"></i> 환경설정</h2>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="card">
+                        <h3><i class="fas fa-user"></i> 티스토리 계정</h3>
+                        <div class="form-group">
+                            <label for="tistory-id">티스토리 ID</label>
+                            <input type="text" id="tistory-id" class="form-input" placeholder="tistory_username">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="tistory-pw">티스토리 비밀번호</label>
+                            <input type="password" id="tistory-pw" class="form-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="blog-address">블로그 주소</label>
+                            <input type="text" id="blog-address" class="form-input" 
+                                   placeholder="myblog.tistory.com">
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-tools"></i> 고급 설정</h3>
+                        <div class="form-group">
+                            <label for="debug-mode">디버그 모드</label>
+                            <input type="checkbox" id="debug-mode" class="toggle">
+                            <small>상세한 실행 로그 출력</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="headless-mode">헤드리스 모드</label>
+                            <input type="checkbox" id="headless-mode" class="toggle" checked>
+                            <small>브라우저 창을 숨기고 실행 (권장)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="auto-retry">자동 재시도</label>
+                            <input type="checkbox" id="auto-retry" class="toggle" checked>
+                            <small>실패 시 자동으로 재시도</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="save-environment" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 환경설정 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- 로그 탭 -->
+            <div id="logs" class="tab-content">
+                <div class="header">
+                    <h2><i class="fas fa-file-alt"></i> 로그 관리</h2>
+                    <div class="header-actions">
+                        <button id="open-log-file" class="btn btn-secondary">
+                            <i class="fas fa-folder-open"></i> 로그 파일 열기
+                        </button>
+                        <button id="clear-log" class="btn btn-warning">
+                            <i class="fas fa-trash"></i> 로그 지우기
+                        </button>
+                        <button id="export-log" class="btn btn-info">
+                            <i class="fas fa-download"></i> 로그 내보내기
+                        </button>
+                    </div>
+                </div>
+
+                <div class="log-container">
+                    <div id="log-viewer" class="log-viewer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메시지 모달 -->
+    <div id="message-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modal-message"></div>
+        </div>
+    </div>
+
+    <!-- 로딩 스피너 -->
+    <div id="loading-spinner" class="loading-spinner">
+        <div class="spinner"></div>
+        <p>처리 중...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 

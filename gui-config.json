@@ -1,0 +1,49 @@
+{
+  "tistory": {
+    "id": "hwiery@gmail.com",
+    "password": "1q2w3e4r5t",
+    "blogAddress": "vibecoderyangc.tistory.com"
+  },
+  "rss": {
+    "url": "https://www.nngroup.com/feed/rss/",
+    "sourceType": "custom",
+    "category": "h",
+    "keywordFilter": "",
+    "excludeKeywords": "",
+    "removeMediaNames": true,
+    "minContentLength": 100
+  },
+  "schedule": {
+    "mode": "manual",
+    "type": "daily_9am",
+    "customCron": "",
+    "scheduledDate": "2025-06-09",
+    "scheduledTime": "09:00",
+    "repeatType": "once",
+    "maxArticles": 3,
+    "interval": 30,
+    "enabled": false
+  },
+  "html": {
+    "enabled": false,
+    "template": "rich",
+    "includeImages": false,
+    "autoParagraph": true,
+    "addSourceLink": true
+  },
+  "ai": {
+    "enabled": false,
+    "apiKey": "",
+    "model": "gpt-3.5-turbo",
+    "improveTitle": false,
+    "improveContent": false,
+    "generateTags": false,
+    "addSummary": false,
+    "translateContent": false
+  },
+  "advanced": {
+    "debug": false,
+    "headless": true,
+    "autoRetry": true
+  }
+}
