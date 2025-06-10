@@ -37,8 +37,8 @@ ehthumbs.db
 Thumbs.db
 
 # IDE 설정 파일
-.vscode/
 .idea/
+temp_auto_push.bat
 *.swp
 *.swo
 *~
@@ -78,4 +78,5 @@ browser-data/
 
 # 민감한 정보가 포함된 파일들
 gui-config.json
-config/local.json 
+config/local.json .gitignore
+temp_interactive_push.bat

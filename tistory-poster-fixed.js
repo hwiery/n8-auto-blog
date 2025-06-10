@@ -13,11 +13,28 @@ const TISTORY_ID = process.env.TISTORY_ID;
 const TISTORY_PW = process.env.TISTORY_PW;
 const BLOG_ADDRESS = process.env.BLOG_ADDRESS;
 
-// n8n에서 전달받은 명령줄 인자
+// 자동화 스크립트에서 전달받은 명령줄 인자
 const postTitle = process.argv[2];
-const postContentHTML = process.argv[3];
+const contentFilePath = process.argv[3]; // HTML 파일 경로
 const postCategory = process.argv[4] || ''; // 선택적 카테고리
 const postTags = process.argv[5] || ''; // 선택적 태그
+
+// HTML 콘텐츠 파일 읽기
+let postContentHTML = '';
+try {
+  const fs = require('fs');
+  if (fs.existsSync(contentFilePath)) {
+    postContentHTML = fs.readFileSync(contentFilePath, 'utf8');
+    console.log(`✅ 콘텐츠 파일 읽기 완료: ${postContentHTML.length}자`);
+  } else {
+    // 파일이 아닌 직접 전달된 경우 (하위 호환성)
+    postContentHTML = contentFilePath;
+    console.log(`✅ 직접 콘텐츠 사용: ${postContentHTML.length}자`);
+  }
+} catch (error) {
+  console.error('❌ 콘텐츠 파일 읽기 실패:', error.message);
+  process.exit(1);
+}
 
 /**
  * 환경변수 검증
@@ -51,6 +68,93 @@ function validateEnvironment() {
 }
 
 /**
+ * 시스템 진단 함수
+ */
+async function systemDiagnostics() {
+    console.log('🔍 시스템 진단을 시작합니다...');
+    
+    // 1. 메모리 확인
+    const memUsage = process.memoryUsage();
+    console.log(`💾 메모리 사용량: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
+    
+    // 2. Node.js 버전 확인
+    console.log(`🟢 Node.js 버전: ${process.version}`);
+    console.log(`🖥️ 플랫폼: ${process.platform} ${process.arch}`);
+    
+    // 3. 환경변수 확인
+    console.log(`🌍 환경변수 DISPLAY: ${process.env.DISPLAY || '없음'}`);
+    console.log(`🌍 환경변수 PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH || '없음'}`);
+    
+    console.log('✅ 시스템 진단 완료');
+}
+
+/**
+ * 브라우저 연결 테스트 함수
+ */
+async function testBrowserConnection() {
+    console.log('🧪 브라우저 연결 테스트를 시작합니다...');
+    
+    let testBrowser;
+    try {
+        // 최소한의 설정으로 브라우저 시작 테스트
+        console.log('🚀 테스트용 브라우저 시작...');
+        testBrowser = await puppeteer.launch({
+            executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // 시스템 Chrome 사용
+            headless: false, // 디버그를 위해 브라우저 창 보이기
+            devtools: false,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--disable-default-apps',
+                '--disable-features=TranslateUI',
+                '--remote-debugging-port=0', // 동적 포트 할당
+                '--disable-web-security',
+                '--allow-running-insecure-content'
+            ],
+            timeout: 30000
+        });
+        
+        console.log('✅ 테스트 브라우저 시작 성공');
+        
+        // 간단한 페이지 테스트
+        const testPage = await testBrowser.newPage();
+        console.log('📄 테스트 페이지 생성 성공');
+        
+        await testPage.goto('https://www.google.com', { 
+            waitUntil: 'domcontentloaded',
+            timeout: 15000 
+        });
+        console.log('🌐 구글 페이지 로드 성공');
+        
+        const title = await testPage.title();
+        console.log(`📝 페이지 제목: ${title}`);
+        
+        await testPage.close();
+        await testBrowser.close();
+        
+        console.log('✅ 브라우저 연결 테스트 완료 - 모든 기능 정상');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ 브라우저 연결 테스트 실패:', error.message);
+        console.error('📋 오류 상세:', error.stack);
+        
+        if (testBrowser) {
+            try {
+                await testBrowser.close();
+            } catch (closeError) {
+                console.error('❌ 테스트 브라우저 종료 실패:', closeError.message);
+            }
+        }
+        
+        return false;
+    }
+}
+
+/**
  * 메인 포스팅 함수
  */
 async function postToTistory() {
@@ -64,55 +168,99 @@ async function postToTistory() {
         process.exit(1);
     }
 
+    // 시스템 진단 수행
+    await systemDiagnostics();
+    
+    // 브라우저 연결 테스트 수행
+    const browserTestResult = await testBrowserConnection();
+    if (!browserTestResult) {
+        console.error('❌ 브라우저 연결 테스트 실패. 시스템 환경을 확인해주세요.');
+        process.exit(1);
+    }
+
     let browser;
     try {
-        console.log('🚀 브라우저를 실행합니다...');
+        console.log('🚀 실제 브라우저 세션을 시작합니다...');
         
-        // Puppeteer 브라우저 설정
+        // Puppeteer 브라우저 설정 (최적화된 안정성)
         browser = await puppeteer.launch({
-            headless: "new", // 새로운 headless 모드 사용
+            executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // 시스템 Chrome 사용
+            headless: false, // 디버그를 위해 창 보이기
+            devtools: false,
+            slowMo: 50, // 동작 간 50ms 딜레이로 안정성 향상
+            defaultViewport: null, // 기본 뷰포트 사용
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
                 '--disable-gpu',
+                '--no-first-run',
+                '--disable-default-apps',
+                '--disable-extensions',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI,BlinkGenPropertyTrees',
                 '--lang=ko-KR',
-                '--accept-lang=ko-KR'
-            ]
+                '--remote-debugging-port=0', // 동적 포트 할당으로 충돌 방지
+                '--user-data-dir=/tmp/tistory-poster-' + Date.now(), // 임시 프로필 디렉토리
+                '--window-size=1280,960',
+                '--disable-web-security',
+                '--allow-running-insecure-content'
+            ],
+            timeout: 60000, // 브라우저 시작 타임아웃 60초
+            ignoreDefaultArgs: ['--disable-extensions'] // 기본 확장 차단 무시
         });
 
         const page = await browser.newPage();
         
-        // 한글 인코딩 설정
+        // 네트워크 타임아웃과 재시도 설정
+        await page.setDefaultNavigationTimeout(60000); // 60초
+        await page.setDefaultTimeout(30000); // 30초
+        
+        // 한글 인코딩 및 네트워크 헤더 설정
         await page.setExtraHTTPHeaders({
-            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
+            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'DNT': '1',
+            'Upgrade-Insecure-Requests': '1'
         });
         
         // 네이티브 모달 자동 처리 설정
         setupNativeModalHandlers(page);
         
+        // 네트워크 재시도 설정
+        await page.setRequestInterception(true);
+        page.on('request', (request) => {
+            request.continue();
+        });
+        
+        // 네트워크 오류 처리
+        page.on('requestfailed', (request) => {
+            console.log(`⚠️ 네트워크 요청 실패: ${request.url()} - ${request.failure().errorText}`);
+        });
+        
         // 브라우저 설정
         await page.setViewport({ width: 1280, height: 960 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-        // 1. 티스토리 로그인
+        // 1. 티스토리 로그인 (재시도 로직 포함)
         console.log('🔐 티스토리 로그인을 시도합니다...');
-        await loginToTistory(page);
+        await retryWithBackoff(() => loginToTistory(page), '로그인', 3);
 
-        // 2. 글쓰기 페이지로 이동
+        // 2. 글쓰기 페이지로 이동 (재시도 로직 포함)
         console.log('📝 글쓰기 페이지로 이동합니다...');
-        await navigateToWritePage(page);
+        await retryWithBackoff(() => navigateToWritePage(page), '글쓰기 페이지 이동', 3);
 
-        // 3. 포스트 작성
+        // 3. 포스트 작성 (재시도 로직 포함)
         console.log('✍️ 포스트를 작성합니다...');
-        await writePost(page);
+        await retryWithBackoff(() => writePost(page), '포스트 작성', 2);
 
-        // 4. 포스트 발행
+        // 4. 포스트 발행 (재시도 로직 포함)
         console.log('📤 포스트를 발행합니다...');
-        await publishPost(page);
+        await retryWithBackoff(() => publishPost(page), '포스트 발행', 2);
 
         // 성공 메시지
         const currentUrl = page.url();
@@ -122,15 +270,72 @@ async function postToTistory() {
 
     } catch (error) {
         console.error('❌ 포스팅 과정에서 오류가 발생했습니다:', error.message);
+        console.error('📋 오류 타입:', error.name);
+        console.error('📋 오류 코드:', error.code);
         
-        // 디버깅을 위한 스크린샷 저장
-
+        // 네트워크 오류 분석
+        if (error.message.includes('socket hang up')) {
+            console.error('🔍 Socket Hang Up 오류 분석:');
+            console.error('  - 네트워크 연결이 예기치 않게 종료되었습니다');
+            console.error('  - 브라우저 시작 실패 또는 페이지 로드 실패 가능성');
+            console.error('  - 방화벽이나 프록시 설정 확인 필요');
+        }
+        
+        if (error.message.includes('timeout')) {
+            console.error('🔍 타임아웃 오류 분석:');
+            console.error('  - 작업 완료 시간이 초과되었습니다');
+            console.error('  - 네트워크 속도나 시스템 성능 확인 필요');
+        }
+        
+        // 디버깅을 위한 스크린샷 저장 (브라우저가 존재할 경우)
+        if (browser) {
+            try {
+                const pages = await browser.pages();
+                if (pages.length > 0) {
+                    const debugPath = `debug-error-${Date.now()}.png`;
+                    await pages[0].screenshot({ path: debugPath, fullPage: true });
+                    console.log(`📸 디버그 스크린샷 저장: ${debugPath}`);
+                }
+            } catch (screenshotError) {
+                console.warn('⚠️ 스크린샷 저장 실패:', screenshotError.message);
+            }
+        }
         
         process.exit(1);
     } finally {
         if (browser) {
-            await browser.close();
-            console.log('🔚 브라우저를 종료합니다.');
+            try {
+                await browser.close();
+                console.log('🔚 브라우저를 종료합니다.');
+            } catch (closeError) {
+                console.error('❌ 브라우저 종료 중 오류:', closeError.message);
+            }
+        }
+    }
+}
+
+/**
+ * 재시도 로직 (지수 백오프)
+ */
+async function retryWithBackoff(fn, operationName = '작업', maxRetries = 3, initialDelay = 1000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🔄 ${operationName} 시도 중... (${attempt}/${maxRetries})`);
+            const result = await fn();
+            console.log(`✅ ${operationName} 성공 (${attempt}번째 시도)`);
+            return result;
+        } catch (error) {
+            console.error(`❌ ${operationName} 실패 (${attempt}번째 시도): ${error.message}`);
+            
+            if (attempt === maxRetries) {
+                console.error(`❌ ${operationName} 최종 실패 (${maxRetries}번의 시도 모두 실패)`);
+                throw error;
+            }
+            
+            // 지수 백오프: 1초, 2초, 4초...
+            const delay = initialDelay * Math.pow(2, attempt - 1);
+            console.log(`⏳ ${delay}ms 대기 후 재시도...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 }
@@ -185,13 +390,30 @@ function setupNativeModalHandlers(page) {
  * 티스토리 로그인 함수
  */
 async function loginToTistory(page) {
-    await page.goto('https://www.tistory.com/auth/login', { 
-        waitUntil: 'networkidle2',
-        timeout: 30000 
-    });
+    // 로그인 페이지 이동 (재시도 로직 포함)
+    console.log('🌐 티스토리 로그인 페이지로 이동...');
+    
+    let loginPageLoaded = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            await page.goto('https://www.tistory.com/auth/login', { 
+                waitUntil: 'networkidle2',
+                timeout: 45000 
+            });
+            console.log(`✅ 로그인 페이지 로드 성공 (${attempt}번째 시도)`);
+            loginPageLoaded = true;
+            break;
+        } catch (error) {
+            console.error(`❌ 로그인 페이지 로드 실패 (${attempt}/3): ${error.message}`);
+            if (attempt === 3) {
+                throw new Error(`로그인 페이지 로드 최종 실패: ${error.message}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
 
     // 페이지 로딩 대기
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     // 카카오 로그인 버튼 확인 및 클릭
     const kakaoLoginSelectors = [
@@ -325,14 +547,28 @@ async function loginToTistory(page) {
     await emailInput.type(TISTORY_ID, { delay: 100 });
     await passwordInput.type(TISTORY_PW, { delay: 100 });
     
-    // 로그인 버튼 클릭
+    // 로그인 버튼 클릭 (네트워크 안정성 개선)
     console.log('🔐 로그인 버튼을 클릭합니다...');
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-        loginButton.click()
-    ]);
-
-    console.log('✅ 로그인 성공');
+    
+    try {
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 45000 }),
+            loginButton.click()
+        ]);
+        console.log('✅ 로그인 성공');
+    } catch (error) {
+        // 네비게이션 대기 실패 시 추가 대기 후 재시도
+        console.warn('⚠️ 로그인 후 네비게이션 대기 실패, 페이지 상태 확인 중...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // 현재 페이지가 로그인 페이지가 아니면 로그인 성공으로 간주
+        const currentUrl = page.url();
+        if (!currentUrl.includes('/auth/login')) {
+            console.log('✅ 로그인 성공 (페이지 이동 확인됨)');
+        } else {
+            throw new Error(`로그인 실패: ${error.message}`);
+        }
+    }
 }
 
 /**
@@ -341,14 +577,28 @@ async function loginToTistory(page) {
 async function navigateToWritePage(page) {
     console.log('📝 블로그 메인 페이지로 이동합니다...');
     
-    // 1단계: 블로그 메인 페이지로 이동
-    try {
-        await page.goto(BLOG_ADDRESS, { 
-            waitUntil: 'domcontentloaded',
-            timeout: 30000 
-        });
-        console.log('✅ 블로그 메인 페이지 접속 완료');
-    } catch (error) {
+    // 1단계: 블로그 메인 페이지로 이동 (재시도 로직)
+    let blogPageLoaded = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            console.log(`🌐 블로그 메인 페이지 이동 시도 (${attempt}/3): ${BLOG_ADDRESS}`);
+            await page.goto(BLOG_ADDRESS, { 
+                waitUntil: 'domcontentloaded',
+                timeout: 45000 
+            });
+            console.log(`✅ 블로그 메인 페이지 접속 완료 (${attempt}번째 시도)`);
+            blogPageLoaded = true;
+            break;
+        } catch (error) {
+            console.error(`❌ 블로그 페이지 로드 실패 (${attempt}/3): ${error.message}`);
+            if (attempt === 3) {
+                throw new Error(`블로그 페이지 로드 최종 실패: ${error.message}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+    }
+    
+    if (!blogPageLoaded) {
         console.log('⚠️ 메인 페이지 접속 실패:', error.message);
         throw new Error('블로그 메인 페이지에 접속할 수 없습니다.');
     }
@@ -533,7 +783,7 @@ async function writePost(page) {
             const plainText = postContentHTML.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
             
             // 최소 내용 길이 보장
-            const minContent = plainText.length > 100 ? plainText : plainText + '\n\n본 글은 자동으로 생성된 뉴스 요약입니다.\n\n' + '더 자세한 내용은 원문을 확인해주세요.'.repeat(3);
+            const minContent = plainText.length > 100 ? plainText : plainText + '\n\n관련 주제에 대한 종합적인 분석과 인사이트를 제공합니다.\n\n' + '다양한 관점에서 바라본 최신 동향과 전망을 다루고 있습니다.'.repeat(2);
             
             await inputContent(page, minContent);
             
@@ -1066,6 +1316,64 @@ async function clickConfirmButton(page, confirmButtonSelectors) {
         console.log('⚠️ 확인 버튼 클릭 실패');
         return false;
     }
+}
+
+/**
+ * 포스트 발행 함수
+ */
+async function publishPost(page) {
+    console.log('📤 포스트 발행을 시작합니다...');
+    
+    // 발행 버튼 찾기
+    const publishButtonSelectors = [
+        'button[data-role="publish"]',
+        '#btn-publish',
+        '.btn-publish', 
+        'button:contains("발행")',
+        'button:contains("공개")',
+        'input[type="submit"][value*="발행"]',
+        '.publish-btn',
+        'button.btn_layer_publish',
+        '#publish-btn',
+        'button[id*="publish"]',
+        '.btn-confirm',
+        '.confirm-btn'
+    ];
+    
+    let publishButton = null;
+    
+    // 발행 버튼 찾기
+    for (const selector of publishButtonSelectors) {
+        try {
+            await page.waitForSelector(selector, { timeout: 3000 });
+            publishButton = await page.$(selector);
+            if (publishButton) {
+                console.log(`✅ 발행 버튼 발견: ${selector}`);
+                break;
+            }
+        } catch (error) {
+            // 다음 선택자 시도
+        }
+    }
+    
+    if (!publishButton) {
+        throw new Error('발행 버튼을 찾을 수 없습니다.');
+    }
+    
+    // 발행 버튼 클릭
+    console.log('📤 발행 버튼을 클릭합니다...');
+    await publishButton.click();
+    
+    // 발행 처리 대기
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // 발행 확인 처리
+    await checkPublishConfirmation(page);
+    
+    // 최종 대기
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    console.log('✅ 포스트 발행 완료');
 }
 
 /**
