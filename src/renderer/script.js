@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCurrentConfig();
     setupEventListeners();
     setupTabNavigation();
+    setupTitleBarControls();
     updateCurrentSettings();
 });
 
@@ -22,6 +23,9 @@ function initializeApp() {
     
     // 탭 네비게이션 설정
     setupTabNavigation();
+    
+    // 타이틀 바 컨트롤 설정
+    setupTitleBarControls();
     
     // 현재 날짜 설정
     const today = new Date().toISOString().split('T')[0];
@@ -39,6 +43,7 @@ function initializeApp() {
     // 설정 로드 후 요약 업데이트
     loadCurrentConfig().then(() => {
         updateCurrentSettings();
+        updateLogViewer(); // 로그 뷰어 초기화
     });
     
     // HTML 모드 기본값 설정
@@ -47,10 +52,46 @@ function initializeApp() {
     updateScheduleOptionsVisibility();
     updateRSSSourceOptions();
     
+    // 정기적으로 로그 업데이트 (10초마다)
+    setInterval(updateLogViewer, 10000);
+    
     // Electron API 확인
     if (!window.electronAPI) {
         console.warn('Electron API가 사용 불가능합니다. 일부 기능이 제한될 수 있습니다.');
         showMessage('Electron API에 연결할 수 없습니다. 일부 기능이 제한될 수 있습니다.', 'warning');
+    }
+}
+
+/**
+ * 타이틀 바 컨트롤 설정
+ */
+function setupTitleBarControls() {
+    const minimizeBtn = document.getElementById('minimize-btn');
+    const maximizeBtn = document.getElementById('maximize-btn');
+    const closeBtn = document.getElementById('close-btn');
+    
+    if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            if (window.electronAPI) {
+                window.electronAPI.minimize();
+            }
+        });
+    }
+    
+    if (maximizeBtn) {
+        maximizeBtn.addEventListener('click', () => {
+            if (window.electronAPI) {
+                window.electronAPI.maximize();
+            }
+        });
+    }
+    
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            if (window.electronAPI) {
+                window.electronAPI.close();
+            }
+        });
     }
 }
 
@@ -167,9 +208,9 @@ function setupEventListeners() {
     
     // 로그 관리 버튼
     document.getElementById('clear-log')?.addEventListener('click', clearLogs);
-            document.getElementById('export-log')?.addEventListener('click', exportLogs);
-        document.getElementById('open-log-file')?.addEventListener('click', openLogFile);
-        document.getElementById('copy-all-logs')?.addEventListener('click', copyAllLogs);
+    document.getElementById('export-log')?.addEventListener('click', exportLogs);
+    document.getElementById('open-log-file')?.addEventListener('click', openLogFile);
+    document.getElementById('copy-all-logs')?.addEventListener('click', copyAllLogs);
     
     // 동적 UI 변경 이벤트
     document.getElementById('execution-mode')?.addEventListener('change', updateScheduleOptionsVisibility);
@@ -574,23 +615,42 @@ async function stopAutomation() {
  * 자동화 테스트
  */
 async function testAutomation() {
+    const btn = document.getElementById('test-btn');
+    const originalText = btn.innerHTML;
+    
     try {
-        showLoadingSpinner(true);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 테스트 중...';
         
         const config = collectCurrentConfig();
-        const result = await window.electronAPI?.testAutomation(config) || { success: false, error: 'Electron API 사용 불가' };
+        
+        // 필수 설정 확인
+        if (!config.tistory || !config.tistory.id || !config.tistory.password || !config.tistory.blogAddress) {
+            showMessage('티스토리 계정 정보를 먼저 설정해주세요.', 'warning');
+            return;
+        }
+        
+        if (!config.rss || !config.rss.url) {
+            showMessage('RSS 피드 URL을 먼저 설정해주세요.', 'warning');
+            return;
+        }
+        
+        await appendToLogFile('자동화 테스트를 시작합니다...');
+        
+        const result = await window.electronAPI.testAutomation(config);
         
         if (result.success) {
-            showMessage(`테스트 성공: ${result.message}`, 'success');
-            logMessage(`🧪 테스트 성공: ${result.message}`);
+            showMessage('테스트가 성공적으로 완료되었습니다!', 'success');
         } else {
-            showMessage(`테스트 실패: ${result.error}`, 'error');
+            showMessage(`테스트 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('테스트 오류:', error);
         showMessage('테스트 중 오류가 발생했습니다.', 'error');
     } finally {
-        showLoadingSpinner(false);
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -598,7 +658,9 @@ async function testAutomation() {
  * RSS 피드 테스트
  */
 async function testRSSFeed() {
-    const rssUrl = document.getElementById('rss-url')?.value;
+    const btn = document.getElementById('test-rss');
+    const originalText = btn.innerHTML;
+    const rssUrl = document.getElementById('rss-url').value;
     
     if (!rssUrl) {
         showMessage('RSS URL을 입력해주세요.', 'warning');
@@ -606,21 +668,23 @@ async function testRSSFeed() {
     }
     
     try {
-        showLoadingSpinner(true);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 테스트 중...';
         
-        const result = await window.electronAPI?.testRSSFeed(rssUrl) || { success: false, error: 'Electron API 사용 불가' };
+        const result = await window.electronAPI.testRSSFeed(rssUrl);
         
         if (result.success) {
-            showMessage(`RSS 피드 테스트 성공: ${result.articleCount}개 기사 발견`, 'success');
-            logMessage(`📡 RSS 테스트 성공: ${result.articleCount}개 기사`);
+            showMessage(`RSS 피드 테스트 성공! ${result.articleCount || 0}개의 기사를 찾았습니다.`, 'success');
         } else {
-            showMessage(`RSS 피드 테스트 실패: ${result.error}`, 'error');
+            showMessage(`RSS 피드 테스트 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('RSS 테스트 오류:', error);
         showMessage('RSS 피드 테스트 중 오류가 발생했습니다.', 'error');
     } finally {
-        showLoadingSpinner(false);
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -628,7 +692,9 @@ async function testRSSFeed() {
  * AI 연결 테스트
  */
 async function testAIConnection() {
-    const apiKey = document.getElementById('openai-api-key')?.value;
+    const btn = document.getElementById('test-ai');
+    const originalText = btn.innerHTML;
+    const apiKey = document.getElementById('openai-api-key').value;
     
     if (!apiKey) {
         showMessage('OpenAI API 키를 입력해주세요.', 'warning');
@@ -636,21 +702,23 @@ async function testAIConnection() {
     }
     
     try {
-        showLoadingSpinner(true);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 테스트 중...';
         
-        const result = await window.electronAPI?.testAIConnection(apiKey) || { success: false, error: 'Electron API 사용 불가' };
+        const result = await window.electronAPI.testOpenAI(apiKey);
         
         if (result.success) {
-            showMessage('OpenAI API 연결 테스트 성공', 'success');
-            logMessage('🤖 AI API 연결 성공');
+            showMessage('OpenAI API 연결 테스트 성공!', 'success');
         } else {
-            showMessage(`AI 연결 테스트 실패: ${result.error}`, 'error');
+            showMessage(`OpenAI API 테스트 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('AI 테스트 오류:', error);
         showMessage('AI 연결 테스트 중 오류가 발생했습니다.', 'error');
     } finally {
-        showLoadingSpinner(false);
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -689,8 +757,8 @@ function collectCurrentConfig() {
             enabled: document.getElementById('html-enabled')?.checked || false,
             template: document.getElementById('html-template')?.value || 'rich',
             includeImages: document.getElementById('include-images')?.checked || false,
-            autoParagraph: document.getElementById('auto-paragraph')?.checked || true,
-            addSourceLink: document.getElementById('add-source-link')?.checked || true
+            autoParagraph: document.getElementById('auto-paragraph')?.checked || false,
+            addSourceLink: document.getElementById('add-source-link')?.checked || false
         },
         ai: {
             enabled: document.getElementById('ai-enabled')?.checked || false,
@@ -714,20 +782,58 @@ function collectCurrentConfig() {
  * 스케줄 설정 저장
  */
 async function saveScheduleSettings() {
+    const btn = document.getElementById('save-schedule');
+    const originalText = btn.innerHTML;
+    
     try {
-        const config = collectCurrentConfig();
-        const result = await window.electronAPI?.saveConfig('schedule', config.schedule) || { success: false, error: 'Electron API 사용 불가' };
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+        
+        const scheduleData = {
+            mode: document.getElementById('execution-mode')?.value || 'manual',
+            type: document.getElementById('auto-schedule-type')?.value || 'daily_9am',
+            customCron: document.getElementById('custom-cron')?.value || '',
+            scheduledDate: document.getElementById('scheduled-date')?.value || '',
+            scheduledTime: document.getElementById('scheduled-time')?.value || '09:00',
+            repeatType: document.getElementById('repeat-type')?.value || 'once',
+            maxArticles: parseInt(document.getElementById('max-articles')?.value) || 3,
+            interval: parseInt(document.getElementById('post-interval')?.value) || 30,
+            enabled: document.getElementById('enable-scheduler')?.checked || false,
+            allowRepost: document.getElementById('allow-repost')?.checked || false
+        };
+        
+        // 데이터 유효성 검사
+        if (scheduleData.maxArticles < 1 || scheduleData.maxArticles > 50) {
+            showMessage('최대 기사 수는 1-50 사이여야 합니다.', 'warning');
+            return;
+        }
+        
+        if (scheduleData.interval < 5 || scheduleData.interval > 300) {
+            showMessage('포스팅 간격은 5-300초 사이여야 합니다.', 'warning');
+            return;
+        }
+        
+        if (scheduleData.mode === 'scheduled' && !scheduleData.scheduledDate) {
+            showMessage('일시 지정 실행을 선택했다면 실행 날짜를 설정해주세요.', 'warning');
+            return;
+        }
+        
+        const result = await window.electronAPI.saveConfig('schedule', scheduleData);
         
         if (result.success) {
-            showMessage('스케줄 설정이 저장되었습니다.', 'success');
+            currentConfig.schedule = scheduleData;
             updateCurrentSettings();
-            logMessage('📅 스케줄 설정 저장됨');
+            showMessage('스케줄 설정이 저장되었습니다.', 'success');
         } else {
-            showMessage(`설정 저장 실패: ${result.error}`, 'error');
+            showMessage(`설정 저장 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('스케줄 설정 저장 오류:', error);
-        showMessage('설정 저장 중 오류가 발생했습니다.', 'error');
+        showMessage('스케줄 설정 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -735,20 +841,58 @@ async function saveScheduleSettings() {
  * 콘텐츠 설정 저장
  */
 async function saveContentSettings() {
+    const btn = document.getElementById('save-content');
+    const originalText = btn.innerHTML;
+    
     try {
-        const config = collectCurrentConfig();
-        const result = await window.electronAPI?.saveConfig('content', config.rss) || { success: false, error: 'Electron API 사용 불가' };
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+        
+        const contentData = {
+            url: document.getElementById('rss-url')?.value || '',
+            sourceType: document.getElementById('rss-source-type')?.value || 'google-news',
+            category: document.getElementById('news-category')?.value || 'h',
+            keywordFilter: document.getElementById('keyword-filter')?.value || '',
+            excludeKeywords: document.getElementById('exclude-keywords')?.value || '',
+            removeMediaNames: document.getElementById('remove-media-names')?.checked || false,
+            minContentLength: parseInt(document.getElementById('min-content-length')?.value) || 100
+        };
+        
+        // 데이터 유효성 검사
+        if (!contentData.url) {
+            showMessage('RSS 피드 URL을 입력해주세요.', 'warning');
+            return;
+        }
+        
+        if (contentData.minContentLength < 50 || contentData.minContentLength > 5000) {
+            showMessage('최소 글자 수는 50-5000 사이여야 합니다.', 'warning');
+            return;
+        }
+        
+        // URL 형식 검사
+        try {
+            new URL(contentData.url);
+        } catch {
+            showMessage('올바른 RSS URL을 입력해주세요.', 'warning');
+            return;
+        }
+        
+        const result = await window.electronAPI.saveConfig('rss', contentData);
         
         if (result.success) {
-            showMessage('콘텐츠 설정이 저장되었습니다.', 'success');
+            currentConfig.rss = contentData;
             updateCurrentSettings();
-            logMessage('📰 콘텐츠 설정 저장됨');
+            showMessage('콘텐츠 설정이 저장되었습니다.', 'success');
         } else {
-            showMessage(`설정 저장 실패: ${result.error}`, 'error');
+            showMessage(`설정 저장 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('콘텐츠 설정 저장 오류:', error);
-        showMessage('설정 저장 중 오류가 발생했습니다.', 'error');
+        showMessage('콘텐츠 설정 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -756,20 +900,37 @@ async function saveContentSettings() {
  * HTML 설정 저장
  */
 async function saveHTMLSettings() {
+    const btn = document.getElementById('save-html');
+    const originalText = btn.innerHTML;
+    
     try {
-        const config = collectCurrentConfig();
-        const result = await window.electronAPI?.saveConfig('html', config.html) || { success: false, error: 'Electron API 사용 불가' };
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+        
+        const htmlData = {
+            enabled: document.getElementById('html-enabled')?.checked || false,
+            template: document.getElementById('html-template')?.value || 'rich',
+            includeImages: document.getElementById('include-images')?.checked || false,
+            autoParagraph: document.getElementById('auto-paragraph')?.checked || false,
+            addSourceLink: document.getElementById('add-source-link')?.checked || false
+        };
+        
+        const result = await window.electronAPI.saveConfig('html', htmlData);
         
         if (result.success) {
-            showMessage('HTML 설정이 저장되었습니다.', 'success');
+            currentConfig.html = htmlData;
             updateCurrentSettings();
-            logMessage('📝 HTML 설정 저장됨');
+            showMessage('HTML 설정이 저장되었습니다.', 'success');
         } else {
-            showMessage(`설정 저장 실패: ${result.error}`, 'error');
+            showMessage(`설정 저장 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('HTML 설정 저장 오류:', error);
-        showMessage('설정 저장 중 오류가 발생했습니다.', 'error');
+        showMessage('HTML 설정 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -777,20 +938,51 @@ async function saveHTMLSettings() {
  * AI 설정 저장
  */
 async function saveAISettings() {
+    const btn = document.getElementById('save-ai');
+    const originalText = btn.innerHTML;
+    
     try {
-        const config = collectCurrentConfig();
-        const result = await window.electronAPI?.saveConfig('ai', config.ai) || { success: false, error: 'Electron API 사용 불가' };
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+        
+        const aiData = {
+            enabled: document.getElementById('ai-enabled')?.checked || false,
+            apiKey: document.getElementById('openai-api-key')?.value || '',
+            model: document.getElementById('ai-model')?.value || 'gpt-3.5-turbo',
+            improveTitle: document.getElementById('improve-title')?.checked || false,
+            improveContent: document.getElementById('improve-content')?.checked || false,
+            generateTags: document.getElementById('generate-tags')?.checked || false,
+            addSummary: document.getElementById('add-summary')?.checked || false,
+            translateContent: document.getElementById('translate-content')?.checked || false
+        };
+        
+        // 데이터 유효성 검사
+        if (aiData.enabled && !aiData.apiKey) {
+            showMessage('AI 기능을 활성화하려면 OpenAI API 키를 입력해주세요.', 'warning');
+            return;
+        }
+        
+        if (aiData.enabled && aiData.apiKey && !aiData.apiKey.startsWith('sk-')) {
+            showMessage('올바른 OpenAI API 키를 입력해주세요. (sk-로 시작)', 'warning');
+            return;
+        }
+        
+        const result = await window.electronAPI.saveConfig('ai', aiData);
         
         if (result.success) {
-            showMessage('AI 설정이 저장되었습니다.', 'success');
+            currentConfig.ai = aiData;
             updateCurrentSettings();
-            logMessage('🤖 AI 설정 저장됨');
+            showMessage('AI 설정이 저장되었습니다.', 'success');
         } else {
-            showMessage(`설정 저장 실패: ${result.error}`, 'error');
+            showMessage(`설정 저장 실패: ${result.message}`, 'error');
         }
+        
     } catch (error) {
         console.error('AI 설정 저장 오류:', error);
-        showMessage('설정 저장 중 오류가 발생했습니다.', 'error');
+        showMessage('AI 설정 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -798,22 +990,57 @@ async function saveAISettings() {
  * 환경설정 저장
  */
 async function saveEnvironmentSettings() {
+    const btn = document.getElementById('save-environment');
+    const originalText = btn.innerHTML;
+    
     try {
-        const config = collectCurrentConfig();
-        const result = await window.electronAPI?.saveConfig('environment', {
-            tistory: config.tistory,
-            advanced: config.advanced
-        }) || { success: false, error: 'Electron API 사용 불가' };
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
         
-        if (result.success) {
-            showMessage('환경설정이 저장되었습니다.', 'success');
-            logMessage('⚙️ 환경설정 저장됨');
-        } else {
-            showMessage(`설정 저장 실패: ${result.error}`, 'error');
+        const tistoryData = {
+            id: document.getElementById('tistory-id')?.value || '',
+            password: document.getElementById('tistory-pw')?.value || '',
+            blogAddress: document.getElementById('blog-address')?.value || ''
+        };
+        
+        const advancedData = {
+            debug: document.getElementById('debug-mode')?.checked || false,
+            headless: document.getElementById('headless-mode')?.checked || true,
+            autoRetry: document.getElementById('auto-retry')?.checked || true
+        };
+        
+        // 데이터 유효성 검사
+        if (!tistoryData.id || !tistoryData.password || !tistoryData.blogAddress) {
+            showMessage('티스토리 계정 정보를 모두 입력해주세요.', 'warning');
+            return;
         }
+        
+        // 블로그 주소 형식 검사
+        if (!tistoryData.blogAddress.includes('.tistory.com')) {
+            showMessage('올바른 티스토리 블로그 주소를 입력해주세요. (예: myblog.tistory.com)', 'warning');
+            return;
+        }
+        
+        // 두 섹션 동시 저장
+        const tistoryResult = await window.electronAPI.saveConfig('tistory', tistoryData);
+        const advancedResult = await window.electronAPI.saveConfig('advanced', advancedData);
+        
+        if (tistoryResult.success && advancedResult.success) {
+            currentConfig.tistory = tistoryData;
+            currentConfig.advanced = advancedData;
+            updateCurrentSettings();
+            showMessage('환경설정이 저장되었습니다.', 'success');
+        } else {
+            const errorMessage = !tistoryResult.success ? tistoryResult.message : advancedResult.message;
+            showMessage(`설정 저장 실패: ${errorMessage}`, 'error');
+        }
+        
     } catch (error) {
         console.error('환경설정 저장 오류:', error);
-        showMessage('설정 저장 중 오류가 발생했습니다.', 'error');
+        showMessage('환경설정 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 
@@ -821,21 +1048,28 @@ async function saveEnvironmentSettings() {
  * 로그 지우기
  */
 async function clearLogs() {
-    if (confirm('모든 로그를 삭제하시겠습니까?')) {
-        try {
-            const result = await window.electronAPI?.clearLogs() || { success: false, error: 'Electron API 사용 불가' };
+    try {
+        const result = await window.electronAPI.clearLogFile();
+        
+        if (result.success) {
+            const logViewer = document.getElementById('log-viewer');
+            const realTimeLog = document.getElementById('real-time-log');
             
-            if (result.success) {
-                document.getElementById('log-viewer').innerHTML = '';
-                document.getElementById('real-time-log').innerHTML = '';
-                showMessage('로그가 삭제되었습니다.', 'success');
-            } else {
-                showMessage(`로그 삭제 실패: ${result.error}`, 'error');
+            if (logViewer) {
+                logViewer.textContent = '';
             }
-        } catch (error) {
-            console.error('로그 삭제 오류:', error);
-            showMessage('로그 삭제 중 오류가 발생했습니다.', 'error');
+            
+            if (realTimeLog) {
+                realTimeLog.innerHTML = '';
+            }
+            
+            showMessage('로그가 삭제되었습니다.', 'success');
+        } else {
+            showMessage(`로그 삭제 실패: ${result.message}`, 'error');
         }
+    } catch (error) {
+        console.error('로그 삭제 오류:', error);
+        showMessage('로그 삭제 중 오류가 발생했습니다.', 'error');
     }
 }
 
@@ -844,12 +1078,12 @@ async function clearLogs() {
  */
 async function exportLogs() {
     try {
-        const result = await window.electronAPI?.exportLogs() || { success: false, error: 'Electron API 사용 불가' };
+        const result = await window.electronAPI.exportLogFile();
         
         if (result.success) {
-            showMessage(`로그가 내보내졌습니다: ${result.filePath}`, 'success');
+            showMessage('로그가 성공적으로 내보내기되었습니다.', 'success');
         } else {
-            showMessage(`로그 내보내기 실패: ${result.error}`, 'error');
+            showMessage(`로그 내보내기 실패: ${result.message}`, 'error');
         }
     } catch (error) {
         console.error('로그 내보내기 오류:', error);
@@ -862,10 +1096,10 @@ async function exportLogs() {
  */
 async function openLogFile() {
     try {
-        const result = await window.electronAPI?.openLogFile() || { success: false, error: 'Electron API 사용 불가' };
+        const result = await window.electronAPI.openLogFile();
         
         if (!result.success) {
-            showMessage(`로그 파일 열기 실패: ${result.error}`, 'error');
+            showMessage(`로그 파일 열기 실패: ${result.message}`, 'error');
         }
     } catch (error) {
         console.error('로그 파일 열기 오류:', error);
@@ -874,41 +1108,18 @@ async function openLogFile() {
 }
 
 /**
- * 전체 로그 복사
+ * 모든 로그 복사
  */
 async function copyAllLogs() {
     try {
-        const logViewer = document.getElementById('log-viewer');
-        if (!logViewer) {
-            showMessage('로그 뷰어를 찾을 수 없습니다.', 'error');
-            return;
-        }
-
-        // 모든 로그 엔트리 수집
-        const logEntries = logViewer.querySelectorAll('.log-entry');
-        const allLogs = Array.from(logEntries).map(entry => entry.textContent).join('\n');
+        const result = await window.electronAPI.readLogFile();
         
-        if (!allLogs.trim()) {
-            showMessage('복사할 로그가 없습니다.', 'warning');
-            return;
-        }
-
-        // 클립보드에 복사
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(allLogs);
-            showMessage(`총 ${logEntries.length}개의 로그가 클립보드에 복사되었습니다.`, 'success');
+        if (result.success && result.data) {
+            await navigator.clipboard.writeText(result.data);
+            showMessage('로그가 클립보드에 복사되었습니다.', 'success');
         } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = allLogs;
-            document.body.appendChild(textArea);
-            textArea.select();
-            textArea.setSelectionRange(0, 99999);
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            showMessage(`총 ${logEntries.length}개의 로그가 클립보드에 복사되었습니다.`, 'success');
+            showMessage('복사할 로그가 없습니다.', 'warning');
         }
-        
     } catch (error) {
         console.error('로그 복사 오류:', error);
         showMessage('로그 복사 중 오류가 발생했습니다.', 'error');
@@ -1031,6 +1242,74 @@ function logMessage(message) {
         if (entries.length > 200) {
             entries[0].remove();
         }
+    }
+}
+
+/**
+ * 로그 파일 읽기 및 업데이트
+ */
+async function updateLogViewer() {
+    try {
+        const result = await window.electronAPI.readLogFile();
+        
+        if (result.success) {
+            const logViewer = document.getElementById('log-viewer');
+            const realTimeLog = document.getElementById('real-time-log');
+            
+            if (logViewer) {
+                logViewer.textContent = result.data || '로그가 없습니다.';
+                logViewer.scrollTop = logViewer.scrollHeight;
+            }
+            
+            if (realTimeLog) {
+                // 최근 10줄만 표시
+                const lines = (result.data || '').split('\n').filter(line => line.trim());
+                const recentLines = lines.slice(-10);
+                realTimeLog.innerHTML = recentLines.map(line => `<div class="log-entry">${line}</div>`).join('');
+                realTimeLog.scrollTop = realTimeLog.scrollHeight;
+            }
+        }
+    } catch (error) {
+        console.error('로그 읽기 오류:', error);
+    }
+}
+
+/**
+ * 로그에 메시지 추가
+ */
+async function appendToLogFile(message) {
+    const timestamp = new Date().toLocaleString('ko-KR');
+    const logMessage = `[${timestamp}] ${message}\n`;
+    
+    try {
+        // 로그 파일에 추가하는 것은 메인 프로세스에서 처리
+        console.log(logMessage);
+        
+        // UI 업데이트
+        const logViewer = document.getElementById('log-viewer');
+        const realTimeLog = document.getElementById('real-time-log');
+        
+        if (logViewer) {
+            logViewer.textContent += logMessage;
+            logViewer.scrollTop = logViewer.scrollHeight;
+        }
+        
+        if (realTimeLog) {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.textContent = logMessage.trim();
+            realTimeLog.appendChild(logEntry);
+            
+            // 최대 10개 항목만 유지
+            while (realTimeLog.children.length > 10) {
+                realTimeLog.removeChild(realTimeLog.firstChild);
+            }
+            
+            realTimeLog.scrollTop = realTimeLog.scrollHeight;
+        }
+        
+    } catch (error) {
+        console.error('로그 추가 오류:', error);
     }
 }
 

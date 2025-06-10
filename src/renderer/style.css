@@ -14,10 +14,13 @@
     --border-color: #e9ecef;
     --sidebar-bg: #2c3e50;
     --sidebar-text: #ecf0f1;
+    --title-bar-bg: #1a1a1a;
+    --title-bar-text: #ffffff;
     --shadow-light: 0 2px 10px rgba(0, 0, 0, 0.1);
     --shadow-medium: 0 4px 20px rgba(0, 0, 0, 0.15);
     --border-radius: 8px;
     --transition: all 0.3s ease;
+    --title-bar-height: 32px;
 }
 
 /* 다크 모드 지원 */
@@ -29,6 +32,7 @@
         --card-bg: #34495e;
         --border-color: #4a5568;
         --sidebar-bg: #1a252f;
+        --title-bar-bg: #0d1117;
     }
 }
 
@@ -47,11 +51,96 @@ body {
     overflow: hidden;
 }
 
+/* 타이틀 바 */
+.title-bar {
+    height: var(--title-bar-height);
+    background: var(--title-bar-bg);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    -webkit-app-region: drag;
+    user-select: none;
+}
+
+.title-bar-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 100%;
+    padding: 0 12px;
+}
+
+.title-bar-icon {
+    color: var(--accent-color);
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+.title-bar-title {
+    color: var(--title-bar-text);
+    font-size: 13px;
+    font-weight: 500;
+    flex: 1;
+    text-align: center;
+    opacity: 0.9;
+}
+
+.title-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    -webkit-app-region: no-drag;
+}
+
+.title-bar-button {
+    width: 28px;
+    height: 20px;
+    background: transparent;
+    border: none;
+    color: var(--title-bar-text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    opacity: 0.7;
+    transition: var(--transition);
+    border-radius: 2px;
+}
+
+.title-bar-button:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.title-bar-button.close:hover {
+    background: #ff5f57;
+    color: #ffffff;
+}
+
+.title-bar-button.maximize:hover {
+    background: #ffbd2e;
+    color: #000000;
+}
+
+.title-bar-button.minimize:hover {
+    background: #28ca42;
+    color: #000000;
+}
+
 /* 레이아웃 */
 .app-container {
     display: flex;
-    height: 100vh;
+    height: calc(100vh - var(--title-bar-height));
     width: 100vw;
+    margin-top: var(--title-bar-height);
 }
 
 /* 사이드바 */
@@ -63,6 +152,7 @@ body {
     box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
     overflow-y: auto;
     z-index: 100;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .logo {
@@ -134,6 +224,7 @@ body {
     padding: 20px;
     overflow-y: auto;
     background: var(--bg-color);
+    position: relative;
 }
 
 /* 탭 컨텐츠 */
@@ -157,8 +248,12 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 30px;
-    padding-bottom: 15px;
+    padding: 20px 0 15px;
     border-bottom: 2px solid var(--border-color);
+    background: var(--card-bg);
+    margin: -20px -20px 30px -20px;
+    padding: 25px 30px 20px;
+    box-shadow: var(--shadow-light);
 }
 
 .header h2 {

@@ -102,9 +102,11 @@ function createWindow() {
             enableRemoteModule: false,
             preload: path.join(__dirname, 'preload.js')
         },
-        titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-        frame: true,
-        show: false
+        titleBarStyle: 'hidden',
+        frame: false,
+        show: false,
+        backgroundColor: '#1a1a1a',
+        titleBarOverlay: false
     });
 
     // 윈도우 로드 완료 후 표시
@@ -198,32 +200,25 @@ function setupIPC() {
         try {
             let currentConfig = DEFAULT_CONFIG;
             
+            // 기존 설정 로드
             try {
                 const configData = await fs.readFile(CONFIG_FILE, 'utf8');
-                currentConfig = JSON.parse(configData);
+                currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(configData) };
             } catch (error) {
-                // 파일이 없으면 기본값 사용
+                console.log('기존 설정을 불러올 수 없어 기본값을 사용합니다.');
             }
             
-            // 특정 섹션 업데이트
-            if (section === 'environment') {
-                currentConfig.tistory = data.tistory;
-                currentConfig.advanced = data.advanced;
-            } else {
-                currentConfig[section] = data;
-            }
+            // 섹션별 설정 업데이트
+            currentConfig[section] = { ...currentConfig[section], ...data };
             
+            // 설정 파일 저장
             await fs.writeFile(CONFIG_FILE, JSON.stringify(currentConfig, null, 2));
             
-            // 스케줄 변경 시 스케줄러 업데이트
-            if (section === 'schedule') {
-                setupScheduler(currentConfig);
-            }
-            
-            return { success: true };
+            console.log(`${section} 설정이 저장되었습니다.`);
+            return { success: true, message: '설정이 저장되었습니다.' };
         } catch (error) {
-            console.error('설정 저장 오류:', error);
-            return { success: false, error: error.message };
+            console.error('설정 저장 중 오류:', error);
+            return { success: false, message: '설정 저장 중 오류가 발생했습니다.' };
         }
     });
 
@@ -231,33 +226,27 @@ function setupIPC() {
     ipcMain.handle('start-automation', async (event, config) => {
         try {
             if (automationProcess) {
-                return { success: false, error: '이미 실행 중입니다.' };
+                return { success: false, message: '자동화가 이미 실행 중입니다.' };
             }
 
-            // 필수 설정 확인
-            if (!config.tistory.id || !config.tistory.password || !config.tistory.blogAddress) {
-                return { success: false, error: '티스토리 계정 정보를 입력해주세요.' };
-            }
-
-            if (!config.rss.url) {
-                return { success: false, error: 'RSS 피드 URL을 입력해주세요.' };
-            }
-
-            // 설정 저장
-            await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
-
-            // 자동화 스크립트 실행
-            await startAutomationProcess(config);
+            const result = await startAutomationProcess(config);
             
-            // 스케줄러 설정
-            if (config.schedule.enabled) {
-                setupScheduler(config);
+            if (result.success) {
+                // 스케줄러 설정
+                if (config.schedule && config.schedule.enabled && config.schedule.mode === 'auto') {
+                    setupScheduler(config);
+                }
+                
+                // 상태 업데이트
+                if (mainWindow) {
+                    mainWindow.webContents.send('automation-status', 'running');
+                }
             }
-
-            return { success: true };
+            
+            return result;
         } catch (error) {
-            console.error('자동화 시작 오류:', error);
-            return { success: false, error: error.message };
+            console.error('자동화 시작 중 오류:', error);
+            return { success: false, message: '자동화 시작 중 오류가 발생했습니다.' };
         }
     });
 
@@ -273,38 +262,93 @@ function setupIPC() {
                 scheduledTask.destroy();
                 scheduledTask = null;
             }
-
-            return { success: true };
+            
+            // 상태 업데이트
+            if (mainWindow) {
+                mainWindow.webContents.send('automation-status', 'stopped');
+            }
+            
+            await appendToLogFile('자동화가 중지되었습니다.');
+            return { success: true, message: '자동화가 중지되었습니다.' };
         } catch (error) {
-            console.error('자동화 중지 오류:', error);
-            return { success: false, error: error.message };
+            console.error('자동화 중지 중 오류:', error);
+            return { success: false, message: '자동화 중지 중 오류가 발생했습니다.' };
         }
     });
 
-    // 테스트 실행
+    // 자동화 테스트
     ipcMain.handle('test-automation', async (event, config) => {
         try {
-            // RSS 피드 테스트
-            const rssResult = await testRSSFeed(config.rss.url);
-            if (!rssResult.success) {
-                return { success: false, error: `RSS 피드 오류: ${rssResult.error}` };
+            await appendToLogFile('자동화 테스트를 시작합니다...');
+            
+            // 필수 설정 확인 (GUI 설정 구조에 맞게)
+            const requiredSettings = [
+                { name: 'TISTORY_ID', value: config.tistory?.id },
+                { name: 'TISTORY_PW', value: config.tistory?.password }, 
+                { name: 'BLOG_ADDRESS', value: config.tistory?.blogAddress }
+            ];
+            
+            const missingSettings = requiredSettings.filter(setting => !setting.value || setting.value.trim() === '');
+            
+            if (missingSettings.length > 0) {
+                const missingNames = missingSettings.map(s => s.name);
+                const errorMsg = `필수 설정이 누락되었습니다: ${missingNames.join(', ')}`;
+                await appendToLogFile(`❌ ${errorMsg}`);
+                await appendToLogFile(`💡 환경 설정 페이지에서 티스토리 계정 정보를 입력해주세요.`);
+                return { success: false, message: errorMsg };
             }
-
-            // AI API 테스트 (활성화된 경우)
-            if (config.ai.enabled && config.ai.apiKey) {
-                const aiResult = await testOpenAI(config.ai.apiKey);
-                if (!aiResult.success) {
-                    return { success: false, error: `AI API 오류: ${aiResult.error}` };
+            
+            await appendToLogFile('✅ 필수 설정 확인 완료');
+            
+            // RSS 피드 테스트
+            const rssUrl = config.rss.url || process.env.RSS_FEED_URL;
+            if (rssUrl) {
+                console.log('RSS 피드 테스트 중...');
+                await appendToLogFile('RSS 피드 테스트 중...');
+                const rssTest = await testRSSFeed(rssUrl);
+                if (!rssTest.success) {
+                    const errorMsg = `RSS 피드 테스트 실패: ${rssTest.error}`;
+                    await appendToLogFile(`❌ ${errorMsg}`);
+                    return { success: false, message: errorMsg };
+                } else {
+                    await appendToLogFile(`✅ RSS 피드 테스트 성공: ${rssTest.articleCount}개 기사 발견`);
                 }
             }
-
-            return { 
-                success: true, 
-                message: `RSS: ${rssResult.articleCount}개 기사, AI: ${config.ai.enabled ? '연결됨' : '비활성화'}` 
+            
+            // OpenAI API 테스트 (활성화된 경우)
+            if (config.ai.enabled && config.ai.apiKey) {
+                console.log('OpenAI API 테스트 중...');
+                await appendToLogFile('OpenAI API 테스트 중...');
+                const aiTest = await testOpenAI(config.ai.apiKey);
+                if (!aiTest.success) {
+                    await appendToLogFile(`⚠️ OpenAI API 테스트 실패: ${aiTest.error} (계속 진행)`);
+                } else {
+                    await appendToLogFile('✅ OpenAI API 테스트 성공');
+                }
+            }
+            
+            // 테스트용으로 디버그 모드 설정하고 자동화 실행
+            const testConfig = {
+                ...config,
+                advanced: { ...config.advanced, debug: true },
+                schedule: { ...config.schedule, maxArticles: 1 } // 테스트용으로 1개만
             };
+            
+            // GUI 설정을 파일로 저장 (자동화 스크립트가 읽을 수 있도록)
+            const guiConfigPath = path.resolve(__dirname, '..', 'gui-config.json');
+            await fs.writeFile(guiConfigPath, JSON.stringify(testConfig, null, 2));
+            await appendToLogFile('✅ GUI 설정 저장 완료');
+            
+            await appendToLogFile('🚀 테스트용 자동화 프로세스 실행 중...');
+            
+            // 자동화 프로세스 실행 (테스트 모드)
+            const testResult = await startAutomationProcess(testConfig, true);
+            
+            return testResult;
         } catch (error) {
-            console.error('테스트 오류:', error);
-            return { success: false, error: error.message };
+            console.error('자동화 테스트 중 오류:', error);
+            await appendToLogFile(`❌ 자동화 테스트 오류: ${error.message}`);
+            return { success: false, message: `자동화 테스트 중 오류: ${error.message}` };
         }
     });
 
@@ -313,50 +357,90 @@ function setupIPC() {
         return await testRSSFeed(url);
     });
 
-    // AI 연결 테스트
-    ipcMain.handle('test-ai-connection', async (event, apiKey) => {
+    // OpenAI API 테스트
+    ipcMain.handle('test-openai', async (event, apiKey) => {
         return await testOpenAI(apiKey);
     });
 
-    // 로그 관련
-    ipcMain.handle('clear-logs', async () => {
+    // 로그 파일 읽기
+    ipcMain.handle('read-log-file', async () => {
         try {
-            await fs.writeFile(LOG_FILE, '');
-            return { success: true };
+            const logData = await fs.readFile(LOG_FILE, 'utf8');
+            return { success: true, data: logData };
         } catch (error) {
-            return { success: false, error: error.message };
+            console.error('로그 파일 읽기 오류:', error);
+            return { success: false, message: '로그 파일을 읽을 수 없습니다.' };
         }
     });
 
-    ipcMain.handle('export-logs', async () => {
+    // 로그 파일 지우기
+    ipcMain.handle('clear-log-file', async () => {
         try {
-            const { dialog } = require('electron');
+            await fs.writeFile(LOG_FILE, '');
+            return { success: true, message: '로그가 삭제되었습니다.' };
+        } catch (error) {
+            console.error('로그 파일 삭제 오류:', error);
+            return { success: false, message: '로그 파일을 삭제할 수 없습니다.' };
+        }
+    });
+
+    // 로그 파일 열기
+    ipcMain.handle('open-log-file', async () => {
+        try {
+            await shell.openPath(LOG_FILE);
+            return { success: true };
+        } catch (error) {
+            console.error('로그 파일 열기 오류:', error);
+            return { success: false, message: '로그 파일을 열 수 없습니다.' };
+        }
+    });
+
+    // 로그 파일 내보내기
+    ipcMain.handle('export-log-file', async () => {
+        try {
             const result = await dialog.showSaveDialog(mainWindow, {
-                defaultPath: `tistory-automation-logs-${new Date().toISOString().split('T')[0]}.txt`,
+                title: '로그 파일 저장',
+                defaultPath: `tistory-automation-log-${new Date().toISOString().split('T')[0]}.log`,
                 filters: [
+                    { name: '로그 파일', extensions: ['log'] },
                     { name: '텍스트 파일', extensions: ['txt'] },
                     { name: '모든 파일', extensions: ['*'] }
                 ]
             });
 
             if (!result.canceled && result.filePath) {
-                const logData = await fs.readFile(LOG_FILE, 'utf8').catch(() => '로그 없음');
+                const logData = await fs.readFile(LOG_FILE, 'utf8');
                 await fs.writeFile(result.filePath, logData);
-                return { success: true, filePath: result.filePath };
-            } else {
-                return { success: false, error: '저장이 취소되었습니다.' };
+                return { success: true, message: '로그가 내보내기되었습니다.' };
             }
+            
+            return { success: false, message: '내보내기가 취소되었습니다.' };
         } catch (error) {
-            return { success: false, error: error.message };
+            console.error('로그 파일 내보내기 오류:', error);
+            return { success: false, message: '로그 파일을 내보낼 수 없습니다.' };
         }
     });
 
-    ipcMain.handle('open-log-file', async () => {
-        try {
-            await shell.openPath(LOG_FILE);
-            return { success: true };
-        } catch (error) {
-            return { success: false, error: error.message };
+    // 윈도우 컨트롤
+    ipcMain.handle('window-minimize', () => {
+        if (mainWindow) {
+            mainWindow.minimize();
+        }
+    });
+
+    ipcMain.handle('window-maximize', () => {
+        if (mainWindow) {
+            if (mainWindow.isMaximized()) {
+                mainWindow.unmaximize();
+            } else {
+                mainWindow.maximize();
+            }
+        }
+    });
+
+    ipcMain.handle('window-close', () => {
+        if (mainWindow) {
+            mainWindow.close();
         }
     });
 }
@@ -364,7 +448,7 @@ function setupIPC() {
 /**
  * 자동화 프로세스 시작
  */
-async function startAutomationProcess(config) {
+async function startAutomationProcess(config, isTestMode = false) {
     return new Promise((resolve, reject) => {
         // 스크립트 경로를 완전한 절대 경로로 설정
         const projectRoot = path.resolve(__dirname, '..');
@@ -374,16 +458,28 @@ async function startAutomationProcess(config) {
         console.log('__dirname:', __dirname);
         console.log('프로젝트 루트:', projectRoot);
         
-        // 환경 변수 설정
+        // 환경 변수 설정 (블로그 주소 정규화)
+        let blogAddress = config.tistory.blogAddress;
+        if (blogAddress && !blogAddress.startsWith('http')) {
+            blogAddress = `https://${blogAddress}`;
+        }
+        if (blogAddress && !blogAddress.endsWith('.tistory.com') && !blogAddress.includes('.tistory.com/')) {
+            if (!blogAddress.includes('.tistory.com')) {
+                // 도메인이 없으면 추가
+                const domain = blogAddress.replace(/^https?:\/\//, '').replace(/\/$/, '');
+                blogAddress = `https://${domain}.tistory.com`;
+            }
+        }
+        
         const env = {
             ...process.env,
             TISTORY_ID: config.tistory.id,
             TISTORY_PW: config.tistory.password,
-            BLOG_ADDRESS: config.tistory.blogAddress,
+            BLOG_ADDRESS: blogAddress,
             RSS_FEED_URL: config.rss.url,
             OPENAI_API_KEY: config.ai.apiKey || '',
-            DEBUG_MODE: 'false',
-            HEADLESS_MODE: config.advanced.headless ? 'true' : 'false',
+            DEBUG_MODE: config.advanced?.debug ? 'true' : 'false',
+            HEADLESS_MODE: config.advanced?.headless ? 'true' : 'false',
             HTML_ENABLED: config.html.enabled ? 'true' : 'false',
             AI_ENABLED: config.ai.enabled ? 'true' : 'false',
             // Windows 인코딩 설정
@@ -392,6 +488,12 @@ async function startAutomationProcess(config) {
             // allowRepost 설정 (이전 기사 포함 여부)
             ALLOW_REPOST: config.schedule.allowRepost ? 'true' : 'false'
         };
+        
+        console.log('환경변수 설정 완료:');
+        console.log(`  - TISTORY_ID: ${env.TISTORY_ID}`);
+        console.log(`  - BLOG_ADDRESS: ${env.BLOG_ADDRESS}`);
+        console.log(`  - RSS_FEED_URL: ${env.RSS_FEED_URL}`);
+        console.log(`  - DEBUG_MODE: ${env.DEBUG_MODE}`);
 
         // Node.js 실행 파일 경로 명시적으로 지정
         const nodePath = 'node'; // 글로벌 node 명령어 사용 (shell 모드)
@@ -423,43 +525,127 @@ async function startAutomationProcess(config) {
         }
         appendToLogFile('✅ 자동화 프로세스 시작됨');
 
-        automationProcess.stdout.on('data', (data) => {
-            const message = data.toString().trim();
-            console.log('자동화 출력:', message);
-            
-            // 렌더러에 로그 전송
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('log-message', message);
-            }
-            
-            // 로그 파일에 저장
-            appendToLogFile(message);
-        });
-
-        automationProcess.stderr.on('data', (data) => {
-            const message = data.toString().trim();
-            console.error('자동화 오류:', message);
-            
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('log-message', `오류: ${message}`);
-            }
-            
-            appendToLogFile(`오류: ${message}`);
-        });
-
-        automationProcess.on('close', (code) => {
-            console.log(`자동화 프로세스 종료됨. 코드: ${code}`);
+        automationProcess.on('error', (error) => {
+            console.error('프로세스 시작 오류:', error);
             automationProcess = null;
             
-            const statusMessage = code === 0 ? '자동화 정상 완료' : `자동화 오류 종료 (코드: ${code})`;
+            const errorMessage = `프로세스 시작 실패: ${error.message}`;
             
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('log-message', statusMessage);
-                mainWindow.webContents.send('automation-status', { running: false });
+                mainWindow.webContents.send('log-message', errorMessage);
             }
             
-            appendToLogFile(statusMessage);
+            appendToLogFile(errorMessage);
+            reject(error);
         });
+
+                 if (isTestMode) {
+             // 테스트 모드: 프로세스 완료 대기
+             let outputBuffer = '';
+             let hasError = false;
+             
+             // 로그 수집
+             automationProcess.stdout.on('data', (data) => {
+                 const message = data.toString().trim();
+                 outputBuffer += message + '\n';
+                 console.log('자동화 출력:', message);
+                 
+                 // 렌더러에 로그 전송
+                 if (mainWindow && !mainWindow.isDestroyed()) {
+                     mainWindow.webContents.send('log-message', message);
+                 }
+                 
+                 // 로그 파일에 저장
+                 appendToLogFile(message);
+             });
+
+             automationProcess.stderr.on('data', (data) => {
+                 const message = data.toString().trim();
+                 outputBuffer += `ERROR: ${message}\n`;
+                 hasError = true;
+                 console.error('자동화 오류:', message);
+                 
+                 if (mainWindow && !mainWindow.isDestroyed()) {
+                     mainWindow.webContents.send('log-message', `오류: ${message}`);
+                 }
+                 
+                 appendToLogFile(`오류: ${message}`);
+             });
+
+             automationProcess.on('close', (code) => {
+                 console.log(`자동화 프로세스 종료됨. 코드: ${code}`);
+                 automationProcess = null;
+                 
+                 const isSuccess = code === 0 && !hasError && 
+                                 (outputBuffer.includes('자동화 완료') || 
+                                  outputBuffer.includes('자동화 정상 완료') ||
+                                  outputBuffer.includes('성공적으로 완료'));
+                 
+                 const statusMessage = isSuccess ? '자동화 정상 완료' : `자동화 오류 종료 (코드: ${code})`;
+                 
+                 if (mainWindow && !mainWindow.isDestroyed()) {
+                     mainWindow.webContents.send('log-message', statusMessage);
+                     mainWindow.webContents.send('automation-status', { running: false });
+                 }
+                 
+                 appendToLogFile(statusMessage);
+                 
+                 // 결과 반환
+                 if (isSuccess) {
+                     resolve({ success: true, message: '자동화 테스트가 성공적으로 완료되었습니다.' });
+                 } else {
+                     resolve({ success: false, message: `자동화 테스트 실패 (종료 코드: ${code})` });
+                 }
+             });
+         } else {
+             // 일반 모드: 로그 출력만
+             automationProcess.stdout.on('data', (data) => {
+                 const message = data.toString().trim();
+                 console.log('자동화 출력:', message);
+                 
+                 // 렌더러에 로그 전송
+                 if (mainWindow && !mainWindow.isDestroyed()) {
+                     mainWindow.webContents.send('log-message', message);
+                 }
+                 
+                 // 로그 파일에 저장
+                 appendToLogFile(message);
+             });
+
+             automationProcess.stderr.on('data', (data) => {
+                 const message = data.toString().trim();
+                 console.error('자동화 오류:', message);
+                 
+                 if (mainWindow && !mainWindow.isDestroyed()) {
+                     mainWindow.webContents.send('log-message', `오류: ${message}`);
+                 }
+                 
+                 appendToLogFile(`오류: ${message}`);
+             });
+
+             automationProcess.on('close', (code) => {
+                 console.log(`자동화 프로세스 종료됨. 코드: ${code}`);
+                 automationProcess = null;
+                 
+                 const statusMessage = code === 0 ? '자동화 정상 완료' : `자동화 오류 종료 (코드: ${code})`;
+                 
+                 if (mainWindow && !mainWindow.isDestroyed()) {
+                     mainWindow.webContents.send('log-message', statusMessage);
+                     mainWindow.webContents.send('automation-status', { running: false });
+                 }
+                 
+                 appendToLogFile(statusMessage);
+             });
+             
+             // 일반 모드에서는 바로 성공 반환
+             setTimeout(() => {
+                 if (automationProcess && !automationProcess.killed) {
+                     resolve({ success: true, message: '자동화가 시작되었습니다.' });
+                 } else {
+                     reject(new Error('자동화 프로세스가 시작되지 않았습니다.'));
+                 }
+             }, 500);
+         }
 
         automationProcess.on('error', (error) => {
             console.error('프로세스 시작 오류:', error);
@@ -475,19 +661,12 @@ async function startAutomationProcess(config) {
             reject(error);
         });
 
-        // 성공적으로 시작됨 - 시간 단축
-        setTimeout(() => {
-            if (automationProcess && !automationProcess.killed) {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('automation-status', { running: true });
-                    mainWindow.webContents.send('log-message', '✅ 자동화 시스템 활성화됨');
-                }
-                appendToLogFile('자동화 시스템 활성화됨');
-                resolve();
-            } else {
-                reject(new Error('자동화 프로세스가 시작되지 않았습니다.'));
-            }
-        }, 500); // 1초에서 0.5초로 단축
+        // 초기 시작 알림
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('automation-status', { running: true });
+            mainWindow.webContents.send('log-message', '✅ 자동화 시스템 활성화됨');
+        }
+        appendToLogFile('자동화 시스템 활성화됨');
     });
 }
 

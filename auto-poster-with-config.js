@@ -17,6 +17,72 @@ const path = require('path');
 // 향상된 콘텐츠 추출기 import
 const { extractArticleContent, createEnhancedHTMLTemplate } = require('./enhanced-content-extractor');
 
+// GUI 설정을 config와 통합하는 함수
+function loadGUIConfig() {
+  try {
+    const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
+    if (fs.existsSync(guiConfigPath)) {
+      const guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+      
+      // AI 설정 통합
+      if (guiConfig.ai) {
+        config.openai.enabled = guiConfig.ai.enabled || false;
+        config.openai.apiKey = guiConfig.ai.apiKey || config.openai.apiKey;
+        config.openai.model = guiConfig.ai.model || config.openai.model;
+        
+        // AI 기능 설정 통합
+        config.openai.features.improveTitle = guiConfig.ai.improveTitle || false;
+        config.openai.features.improveContent = guiConfig.ai.improveContent || false;
+        config.openai.features.generateTags = guiConfig.ai.generateTags || false;
+        config.openai.features.addSummary = guiConfig.ai.addSummary || false;
+        config.openai.features.translateContent = guiConfig.ai.translateContent || false;
+      }
+      
+      // RSS 설정 통합
+      if (guiConfig.rss) {
+        config.rss.url = guiConfig.rss.url || config.rss.url;
+        config.content.minContentLength = guiConfig.rss.minContentLength || config.content.minContentLength;
+        config.content.removeMediaNames = guiConfig.rss.removeMediaNames || false;
+      }
+      
+      // HTML 설정 통합
+      if (guiConfig.html) {
+        config.htmlMode.enabled = guiConfig.html.enabled || false;
+        config.htmlMode.template = guiConfig.html.template || config.htmlMode.template;
+        config.htmlMode.includeImages = guiConfig.html.includeImages || false;
+        config.htmlMode.autoParagraph = guiConfig.html.autoParagraph || false;
+        config.htmlMode.addSourceLink = guiConfig.html.addSourceLink || false;
+      }
+      
+      // 일정 설정 통합
+      if (guiConfig.schedule) {
+        config.schedule.maxArticlesPerRun = guiConfig.schedule.maxArticles || config.schedule.maxArticlesPerRun;
+        config.schedule.intervalBetweenPosts = (guiConfig.schedule.interval || 30) * 1000; // 초를 밀리초로
+      }
+      
+      // 디버그 설정 통합
+      if (guiConfig.advanced) {
+        config.debug = config.debug || {};
+        config.debug.enabled = guiConfig.advanced.debug || false;
+      }
+      
+      console.log('✅ GUI 설정 통합 완료');
+      console.log(`🔧 AI 활성화: ${config.openai.enabled}`);
+      console.log(`🔧 콘텐츠 개선: ${config.openai.features.improveContent}`);
+      console.log(`🔧 제목 개선: ${config.openai.features.improveTitle}`);
+      console.log(`🔧 태그 생성: ${config.openai.features.generateTags}`);
+      
+      return guiConfig;
+    }
+  } catch (error) {
+    console.warn('⚠️ GUI 설정 파일 로드 오류:', error.message);
+  }
+  return null;
+}
+
+// GUI 설정 로드
+const guiConfig = loadGUIConfig();
+
 // OpenAI API (선택적)
 let openai = null;
 if (config.openai.enabled && config.openai.apiKey) {
@@ -266,7 +332,8 @@ async function processArticleWithEnhancedContent(article) {
       title: article.title,
       content: finalContent,
       tags: config.content.defaultTags,
-      originalContent: fullContent
+      originalContent: fullContent,
+      contentLength: fullContent.length
     };
     
   } catch (error) {
@@ -279,7 +346,8 @@ async function processArticleWithEnhancedContent(article) {
       title: article.title,
       content: fallbackHTML,
       tags: config.content.defaultTags,
-      originalContent: article.description
+      originalContent: article.description || '기본 내용',
+      contentLength: article.description ? article.description.length : 50
     };
   }
 }
@@ -461,9 +529,16 @@ async function runAutomation() {
         // 향상된 콘텐츠 처리 사용
         const processedContent = await processArticleWithEnhancedContent({ ...article, title: cleanTitle });
 
-        // 내용 검증
-        if (processedContent.originalContent.length < config.content.minContentLength) {
-          console.log(`⚠️ 내용이 너무 짧습니다 (${processedContent.originalContent.length}자). 건너뜁니다.`);
+        // 내용 검증 개선 - 실제 추출된 콘텐츠 길이 확인
+        const actualContentLength = processedContent.contentLength || 
+                                   processedContent.originalContent?.length || 
+                                   processedContent.content?.length || 0;
+        const minLength = config.content.minContentLength || 50; // 기본 최소 길이 50자
+        
+        console.log(`📊 콘텐츠 길이 검증: ${actualContentLength}자 (최소 ${minLength}자 필요)`);
+        
+        if (actualContentLength < minLength) {
+          console.log(`⚠️ 내용이 너무 짧습니다 (${actualContentLength}자). 건너뜁니다.`);
           continue;
         }
 
@@ -473,6 +548,7 @@ async function runAutomation() {
         console.log('✅ 콘텐츠 준비 완료');
         console.log(`📊 제목: ${processedContent.title}`);
         console.log(`📊 내용 길이: ${postContent.length}자`);
+        console.log(`📊 실제 추출 길이: ${actualContentLength}자`);
         console.log(`📊 태그: ${processedContent.tags.join(', ')}`);
 
         // 환경변수 우선 디버그 모드 체크
@@ -481,7 +557,10 @@ async function runAutomation() {
         if (debugMode) {
           console.log('🔍 디버그 모드: 실제 포스팅하지 않음');
           console.log('📝 포스팅 내용 미리보기:');
-          console.log(postContent.substring(0, 300) + '...');
+          console.log(`📋 제목: ${processedContent.title}`);
+          console.log(`📄 내용 길이: ${postContent.length}자`);
+          console.log(`🏷️ 태그: ${processedContent.tags.join(', ')}`);
+          console.log(`📝 내용 샘플: ${postContent.substring(0, 200)}...`);
           console.log('✅ 디버그 모드 완료 - 실제 포스팅하지 않았습니다.');
         } else {
           // ✅ 실제 포스팅 실행!
