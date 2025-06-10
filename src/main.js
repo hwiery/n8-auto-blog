@@ -327,12 +327,13 @@ function setupIPC() {
                 }
             }
             
-            // 테스트용으로 디버그 모드 설정하고 자동화 실행
+            // 사용자 설정을 그대로 사용하되, 테스트용으로 기사 수만 제한
             const testConfig = {
                 ...config,
-                advanced: { ...config.advanced, debug: true },
                 schedule: { ...config.schedule, maxArticles: 1 } // 테스트용으로 1개만
             };
+            
+            console.log(`🔧 테스트 모드 - 디버그 설정: ${testConfig.advanced?.debug}`);
             
             // GUI 설정을 파일로 저장 (자동화 스크립트가 읽을 수 있도록)
             const guiConfigPath = path.resolve(__dirname, '..', 'gui-config.json');

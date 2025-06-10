@@ -585,7 +585,8 @@ body {
     line-height: 1.4;
     overflow-y: auto;
     white-space: pre-wrap;
-    max-height: 300px;
+    max-height: 1500px;
+    min-height: 800px;
 }
 
 .log-entry {

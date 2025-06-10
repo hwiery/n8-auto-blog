@@ -114,21 +114,21 @@ function createHTMLTemplate(article, content, template = 'rich') {
   <div style="border-left: 4px solid #007bff; padding-left: 20px; margin-bottom: 20px;">
     <h2 style="color: #007bff; margin-bottom: 10px;">${article.title}</h2>
     <p style="margin: 5px 0;"><strong>📅 발행일:</strong> ${new Date(article.pubDate).toLocaleDateString('ko-KR')}</p>
-    <p style="margin: 5px 0;"><strong>🔗 원문 보기:</strong> <a href="${article.link}" target="_blank" style="color: #007bff; text-decoration: none;">기사 원문 링크</a></p>
+    <p style="margin: 5px 0;"><strong>📖 더 알아보기:</strong> <a href="${article.link}" target="_blank" style="color: #007bff; text-decoration: none;">관련 정보</a></p>
   </div>
   
   <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
     <h3 style="color: #495057; margin-bottom: 10px;">📰 주요 내용</h3>
     ${article.description ? `<p style="font-style: italic; color: #6c757d; margin-bottom: 15px;">${article.description}</p>` : ''}
     <div style="line-height: 1.8;">
-      ${content ? content.split('\n').map(p => p.trim() ? `<p style="margin: 10px 0; color: #333;">${p.trim()}</p>` : '').join('') : '<p style="color: #333;">자세한 내용은 원문 링크를 참조해주세요.</p>'}
+      ${content ? content.split('\n').map(p => p.trim() ? `<p style="margin: 10px 0; color: #333;">${p.trim()}</p>` : '').join('') : '<p style="color: #333;">관련 내용에 대한 상세한 분석을 다루고 있습니다.</p>'}
     </div>
   </div>
   
   <div style="border-top: 1px solid #dee2e6; padding-top: 15px; margin-top: 20px;">
     <p style="font-size: 0.9em; color: #6c757d;">
-      📌 이 글은 구글 뉴스에서 자동으로 수집된 기사입니다.<br>
-      ⏰ 자동 포스팅 시간: ${currentDate}
+      📌 현재 주목받고 있는 이슈들을 종합하여 정리한 글입니다.<br>
+      ⏰ 작성 시간: ${currentDate}
     </p>
   </div>
 </div>`;
@@ -138,26 +138,26 @@ function createHTMLTemplate(article, content, template = 'rich') {
 <div style="line-height: 1.6;">
   <h2>${article.title}</h2>
   <p><strong>발행일:</strong> ${new Date(article.pubDate).toLocaleDateString('ko-KR')}</p>
-  <p><strong>원문:</strong> <a href="${article.link}" target="_blank">기사 원문 보기</a></p>
+  <p><strong>관련 자료:</strong> <a href="${article.link}" target="_blank">추가 정보 보기</a></p>
   
   <h3>주요 내용</h3>
   ${article.description ? `<p><em>${article.description}</em></p>` : ''}
   <div>
-    ${content ? content.split('\n').map(p => p.trim() ? `<p>${p.trim()}</p>` : '').join('') : '<p>자세한 내용은 원문을 참조해주세요.</p>'}
+    ${content ? content.split('\n').map(p => p.trim() ? `<p>${p.trim()}</p>` : '').join('') : '<p>관련 내용에 대한 심화 분석을 제공하고 있습니다.</p>'}
   </div>
   
   <hr>
-  <p><small>구글 뉴스 자동 수집 | ${currentDate}</small></p>
+  <p><small>종합 정리 | ${currentDate}</small></p>
 </div>`;
 
     case 'minimal':
       return `
 <h2>${article.title}</h2>
 <p>발행일: ${new Date(article.pubDate).toLocaleDateString('ko-KR')}</p>
-<p>원문: <a href="${article.link}" target="_blank">링크</a></p>
+<p>관련 자료: <a href="${article.link}" target="_blank">링크</a></p>
 ${article.description ? `<p>${article.description}</p>` : ''}
 ${content ? `<div>${content.replace(/\n/g, '<br>')}</div>` : ''}
-<p><small>자동 포스팅: ${currentDate}</small></p>`;
+<p><small>작성일: ${currentDate}</small></p>`;
 
     case 'plain':
     default:
@@ -165,14 +165,14 @@ ${content ? `<div>${content.replace(/\n/g, '<br>')}</div>` : ''}
 ${article.title}
 
 발행일: ${new Date(article.pubDate).toLocaleDateString('ko-KR')}
-원문: ${article.link}
+관련 자료: ${article.link}
 
 ${article.description || ''}
 
-${content || '자세한 내용은 원문을 참조해주세요.'}
+${content || '관련 주제에 대한 포괄적인 분석을 다루고 있습니다.'}
 
 ---
-구글 뉴스 자동 수집 | ${currentDate}`;
+종합 정리 | ${currentDate}`;
   }
 }
 
@@ -299,6 +299,17 @@ async function parseRSSFeed() {
 async function processArticleWithEnhancedContent(article) {
   console.log(`🔍 처리 중: ${article.title}`);
   
+  // GUI 설정 로드
+  let guiConfig = {};
+  try {
+    const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
+    if (fs.existsSync(guiConfigPath)) {
+      guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+    }
+  } catch (error) {
+    console.warn('⚠️ GUI 설정 로드 실패:', error.message);
+  }
+  
   try {
     // 1. 실제 기사 내용 추출
     console.log('📄 실제 기사 내용을 추출합니다...');
@@ -310,17 +321,29 @@ async function processArticleWithEnhancedContent(article) {
     
     // 3. AI로 콘텐츠를 한국어 자연어 스타일로 개선 (설정이 활성화된 경우에만)
     let finalContent = enhancedHTML;
-    if (config.openai.enabled && openai && fullContent) {
+    let improvedTitle = article.title;
+    let improvedTags = config.content.defaultTags;
+    
+    // GUI 설정과 기본 설정을 모두 고려
+    const aiConfig = guiConfig?.ai || config.openai;
+    const isAIEnabled = aiConfig?.enabled && openai && fullContent && fullContent.length > 50;
+    
+    if (isAIEnabled) {
       console.log('🤖 AI로 콘텐츠를 한국어 자연어 스타일로 개선합니다...');
       try {
         const aiImproved = await improveContentWithAI(article, fullContent);
-        finalContent = createEnhancedHTMLTemplate(article, aiImproved.content);
+        finalContent = createEnhancedHTMLTemplate({ ...article, title: aiImproved.title }, aiImproved.content);
+        improvedTitle = aiImproved.title;
+        improvedTags = aiImproved.tags;
         console.log('✅ AI 콘텐츠 개선 완료');
+        console.log(`🤖 AI 개선된 제목: ${improvedTitle}`);
+        console.log(`🤖 AI 생성된 태그: ${improvedTags.join(', ')}`);
       } catch (error) {
         console.log('⚠️ AI 콘텐츠 개선 실패, 기본 템플릿 사용:', error.message);
       }
     } else {
-      console.log('ℹ️ AI 콘텐츠 개선 비활성화 (config.openai.enabled: ' + config.openai.enabled + ')');
+      const aiConfig = guiConfig?.ai || config.openai;
+      console.log(`ℹ️ AI 콘텐츠 개선 비활성화 (GUI enabled: ${guiConfig?.ai?.enabled}, config enabled: ${config.openai.enabled}, openai객체: ${!!openai}, fullContent길이: ${fullContent?.length || 0}자)`);
     }
     
     console.log('✅ 콘텐츠 준비 완료');
@@ -328,12 +351,22 @@ async function processArticleWithEnhancedContent(article) {
     console.log(`📊 내용 길이: ${finalContent.length}자`);
     console.log(`📊 태그: ${config.content.defaultTags.join(', ')}`);
     
+    // 실제 콘텐츠 길이 계산 (AI 개선된 경우 finalContent에서 추출)
+    let realContentLength = fullContent.length;
+    
+    // HTML 콘텐츠에서 실제 텍스트 추출해서 길이 계산
+    if (finalContent && finalContent.length > fullContent.length) {
+      // HTML 태그 제거해서 실제 텍스트 길이 확인
+      const textOnly = finalContent.replace(/<[^>]*>/g, '').trim();
+      realContentLength = Math.max(fullContent.length, textOnly.length);
+    }
+    
     return {
-      title: article.title,
+      title: improvedTitle,
       content: finalContent,
-      tags: config.content.defaultTags,
+      tags: improvedTags,
       originalContent: fullContent,
-      contentLength: fullContent.length
+      contentLength: realContentLength
     };
     
   } catch (error) {
@@ -341,13 +374,18 @@ async function processArticleWithEnhancedContent(article) {
     
     // 폴백: 기본 템플릿 사용
     console.log('🔄 기본 템플릿으로 폴백합니다...');
-    const fallbackHTML = createHTMLTemplate(article, article.description, 'rich');
+    const fallbackContent = article.description || `이 기사는 ${article.title}에 대한 내용입니다. 원문에서 자세한 정보를 확인하실 수 있습니다.`;
+    const fallbackHTML = createHTMLTemplate(article, fallbackContent, 'rich');
+    
+    // 폴백 콘텐츠 길이 계산
+    const fallbackTextLength = fallbackHTML.replace(/<[^>]*>/g, '').trim().length;
+    
     return {
       title: article.title,
       content: fallbackHTML,
       tags: config.content.defaultTags,
-      originalContent: article.description || '기본 내용',
-      contentLength: article.description ? article.description.length : 50
+      originalContent: fallbackContent,
+      contentLength: Math.max(fallbackContent.length, fallbackTextLength)
     };
   }
 }
@@ -365,25 +403,31 @@ async function postToTistory(title, content, tags) {
     
     console.log(`📝 포스팅 시작: ${title}`);
     
-    // 프로젝트 루트 경로 설정 및 shell 모드 활성화로 HTML 콘텐츠 전달 문제 해결
-    const projectRoot = path.resolve(__dirname, '..');
-    const posterProcess = spawn(nodePath, [
-      posterScript,
-      title,
-      content,
-      category,
-      tags
-    ], {
-      env: {
-        ...process.env,
-        TISTORY_ID: process.env.TISTORY_ID,
-        TISTORY_PW: process.env.TISTORY_PW,
-        BLOG_ADDRESS: process.env.BLOG_ADDRESS
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: projectRoot,
-      shell: true
-    });
+    // 임시 파일로 콘텐츠 저장 (shell syntax error 방지)
+    const tempContentFile = path.join(__dirname, `temp_content_${Date.now()}.html`);
+    
+    try {
+      fs.writeFileSync(tempContentFile, content, 'utf8');
+      
+      // 프로젝트 루트 경로 설정
+      const projectRoot = path.resolve(__dirname, '..');
+      const posterProcess = spawn(nodePath, [
+        posterScript,
+        title,
+        tempContentFile,  // 파일 경로로 전달
+        category,
+        tags
+      ], {
+        env: {
+          ...process.env,
+          TISTORY_ID: process.env.TISTORY_ID,
+          TISTORY_PW: process.env.TISTORY_PW,
+          BLOG_ADDRESS: process.env.BLOG_ADDRESS
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: projectRoot,
+        shell: false  // shell 모드 비활성화로 안정성 향상
+      });
     
     let stdout = '';
     let stderr = '';
@@ -396,21 +440,43 @@ async function postToTistory(title, content, tags) {
       stderr += data.toString();
     });
     
-    posterProcess.on('close', (code) => {
-      if (code === 0) {
-        console.log(`✅ 포스팅 성공: ${title}`);
-        resolve();
-      } else {
-        console.error(`❌ 포스팅 실패: ${title}`);
-        console.error(`에러 출력: ${stderr}`);
-        reject(new Error(`포스팅 실패 (코드: ${code})`));
-      }
-    });
-    
-    posterProcess.on('error', (error) => {
-      console.error(`❌ 포스팅 프로세스 오류: ${error.message}`);
-      reject(error);
-    });
+      posterProcess.on('close', (code) => {
+        // 임시 파일 정리
+        try {
+          if (fs.existsSync(tempContentFile)) {
+            fs.unlinkSync(tempContentFile);
+          }
+        } catch (cleanupError) {
+          console.warn('⚠️ 임시 파일 정리 실패:', cleanupError.message);
+        }
+        
+        if (code === 0) {
+          console.log(`✅ 포스팅 성공: ${title}`);
+          resolve();
+        } else {
+          console.error(`❌ 포스팅 실패: ${title}`);
+          console.error(`에러 출력: ${stderr}`);
+          reject(new Error(`포스팅 실패 (코드: ${code})`));
+        }
+      });
+      
+      posterProcess.on('error', (error) => {
+        // 임시 파일 정리
+        try {
+          if (fs.existsSync(tempContentFile)) {
+            fs.unlinkSync(tempContentFile);
+          }
+        } catch (cleanupError) {
+          console.warn('⚠️ 임시 파일 정리 실패:', cleanupError.message);
+        }
+        
+        console.error(`❌ 포스팅 프로세스 오류: ${error.message}`);
+        reject(error);
+      });
+    } catch (fileError) {
+      console.error(`❌ 임시 파일 생성 실패: ${fileError.message}`);
+      reject(fileError);
+    }
   });
 }
 
@@ -418,15 +484,16 @@ async function postToTistory(title, content, tags) {
  * 메인 자동화 함수
  */
 async function runAutomation() {
-  // GUI 설정 로드 및 적용
-  const allowRepostEnv = process.env.ALLOW_REPOST === 'true';
-  let allowRepost = allowRepostEnv;
+  // GUI 설정 로드 및 적용 (한 번만 로드)
+  let guiConfig = {};
+  let allowRepost = process.env.ALLOW_REPOST === 'true';
   let maxArticles = config.schedule.maxArticlesPerRun; // 기본값
   
   try {
     const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
     if (fs.existsSync(guiConfigPath)) {
-      const guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+      guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+      console.log('🔧 GUI 설정 파일 로드 완료');
       
       // allowRepost 설정 적용
       if (typeof guiConfig.schedule?.allowRepost === 'boolean') {
@@ -452,14 +519,26 @@ async function runAutomation() {
   console.log(`   - OpenAI: ${config.openai.enabled ? '활성화' : '비활성화'}`);
   console.log(`   - 최대 기사 수: ${maxArticles}개`);
   
-  // 환경변수 및 RSS URL 상태 확인
-  console.log(`📡 RSS 설정 확인:`);
-  console.log(`   - RSS_FEED_URL (환경변수): ${RSS_FEED_URL || '없음'}`);
-  console.log(`   - config RSS URL: ${config.rss?.url || '없음'}`);
-  console.log(`   - 실제 사용할 URL: ${RSS_FEED_URL || config.rss?.url || '없음'}`);
+  // RSS URL 결정 (GUI 설정 우선)
+  let rssUrl = config.rss?.url; // 기본 config
   
-  // 사용할 RSS URL 결정
-  const rssUrl = RSS_FEED_URL || config.rss?.url;
+  // GUI 설정에서 RSS URL 가져오기 (이미 로드된 guiConfig 사용)
+  if (guiConfig.rss?.url) {
+    rssUrl = guiConfig.rss.url;
+    console.log(`🔧 GUI 설정 RSS URL 사용: ${rssUrl}`);
+  }
+  
+  // 환경변수로 오버라이드 가능 (최종 우선순위)
+  if (RSS_FEED_URL) {
+    rssUrl = RSS_FEED_URL;
+    console.log(`🔧 환경변수 RSS URL로 오버라이드: ${rssUrl}`);
+  }
+  
+  console.log(`📡 RSS 설정 확인:`);
+  console.log(`   - GUI RSS URL: ${guiConfig?.rss?.url || '없음'}`);
+  console.log(`   - 환경변수 RSS URL: ${RSS_FEED_URL || '없음'}`);
+  console.log(`   - 기본 config RSS URL: ${config.rss?.url || '없음'}`);
+  console.log(`   - 최종 사용할 URL: ${rssUrl}`);
   
   if (!rssUrl) {
     console.error('❌ RSS 피드 URL이 설정되지 않았습니다.');
@@ -499,7 +578,16 @@ async function runAutomation() {
     }
 
     if (targetArticles.length === 0) {
-      console.log('✅ 처리할 기사(새 또는 allowRepost) 없음');
+      console.log('❌ 처리할 기사가 없습니다!');
+      console.log(`❌ 총 RSS 기사: ${articles.length}개`);
+      console.log(`❌ 이미 처리된 기사: ${processedArticles.length}개`);
+      console.log(`❌ allowRepost 설정: ${allowRepost}`);
+      console.log(`❌ 최대 기사 수: ${maxArticles}개`);
+      
+      if (!allowRepost && articles.length > 0) {
+        console.log('💡 해결방법: allowRepost를 true로 설정하거나 processed_articles.json을 삭제하세요');
+      }
+      
       return;
     }
 
@@ -533,14 +621,35 @@ async function runAutomation() {
         const actualContentLength = processedContent.contentLength || 
                                    processedContent.originalContent?.length || 
                                    processedContent.content?.length || 0;
-        const minLength = config.content.minContentLength || 50; // 기본 최소 길이 50자
+        
+        // GUI 설정의 minContentLength 사용 (기본값 50자)
+        let minLength = 50;
+        try {
+          const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
+          if (fs.existsSync(guiConfigPath)) {
+            const guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+            if (guiConfig.rss?.minContentLength) {
+              minLength = guiConfig.rss.minContentLength;
+              console.log(`🔧 GUI 설정 minContentLength 사용: ${minLength}자`);
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ GUI minContentLength 설정 확인 실패:', error.message);
+        }
         
         console.log(`📊 콘텐츠 길이 검증: ${actualContentLength}자 (최소 ${minLength}자 필요)`);
+        console.log(`📊 실제 HTML 콘텐츠 길이: ${processedContent.content?.length || 0}자`);
         
-        if (actualContentLength < minLength) {
-          console.log(`⚠️ 내용이 너무 짧습니다 (${actualContentLength}자). 건너뜁니다.`);
+        // 실제 콘텐츠 또는 HTML 콘텐츠 중 하나라도 충분하면 진행
+        const htmlContentLength = processedContent.content?.length || 0;
+        const hasEnoughContent = actualContentLength >= minLength || htmlContentLength >= 500; // HTML은 더 관대하게
+        
+        if (!hasEnoughContent) {
+          console.log(`⚠️ 내용이 너무 짧습니다 (실제: ${actualContentLength}자, HTML: ${htmlContentLength}자). 건너뜁니다.`);
           continue;
         }
+        
+        console.log(`✅ 콘텐츠 길이 검증 통과 (실제: ${actualContentLength}자, HTML: ${htmlContentLength}자)`);
 
         // 최종 포스팅 콘텐츠
         let postContent = processedContent.content;
@@ -551,8 +660,31 @@ async function runAutomation() {
         console.log(`📊 실제 추출 길이: ${actualContentLength}자`);
         console.log(`📊 태그: ${processedContent.tags.join(', ')}`);
 
-        // 환경변수 우선 디버그 모드 체크
-        const debugMode = process.env.DEBUG_MODE === 'true' || (config.debug && config.debug.enabled);
+        // 디버그 모드 체크 (GUI 설정 우선)
+        let debugMode = false;
+        
+        // 1. GUI 설정에서 디버그 모드 확인
+        try {
+          const guiConfigPath = path.resolve(__dirname, 'gui-config.json');
+          if (fs.existsSync(guiConfigPath)) {
+            const guiConfig = JSON.parse(fs.readFileSync(guiConfigPath, 'utf8'));
+            debugMode = guiConfig.advanced?.debug === true;
+            console.log(`🔧 GUI 디버그 설정: ${debugMode}`);
+          }
+        } catch (error) {
+          console.warn('⚠️ GUI 디버그 설정 확인 실패:', error.message);
+        }
+        
+        // 2. 환경변수로 오버라이드 가능
+        if (process.env.DEBUG_MODE === 'true') {
+          debugMode = true;
+          console.log(`🔧 환경변수로 디버그 모드 강제 활성화`);
+        } else if (process.env.DEBUG_MODE === 'false') {
+          debugMode = false;
+          console.log(`🔧 환경변수로 디버그 모드 강제 비활성화`);
+        }
+        
+        console.log(`🔧 최종 디버그 모드: ${debugMode}`);
         
         if (debugMode) {
           console.log('🔍 디버그 모드: 실제 포스팅하지 않음');
